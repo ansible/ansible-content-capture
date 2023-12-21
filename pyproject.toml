@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ari-core"
+description = "My package description"
+readme = "README.rst"
+requires-python = ">=3.7"
+keywords = ["one", "two"]
+license = {text = "Apache License 2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "gitdb",
+    "pygit2",
+    "joblib",
+    "jsonpickle",
+    "PyYAML",
+    "smmap",
+    "tabulate",
+    "requests",
+    "ansible",
+    "ruamel.yaml",
+    "filelock",
+    "Levenshtein",
+]
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ari_core.__version__.__version__"}
+
+
+[tool.black]
+line-length = 150
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.flake8]
+ignore = "E203, W503,"
+max-line-length = 150
