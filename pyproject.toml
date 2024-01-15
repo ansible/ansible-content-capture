@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = [
+  "setuptools >= 65.3.0", # required by pyproject+setuptools_scm integration and editable installs
+  "setuptools_scm[toml] >= 7.0.5" # required for "no-local-version" scheme
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -28,9 +31,6 @@ dependencies = [
 ]
 dynamic = ["version"]
 
-[tool.setuptools.dynamic]
-version = {attr = "ansible_parser.__version__.__version__"}
-
 
 [tool.black]
 line-length = 150
@@ -52,3 +52,8 @@ exclude = '''
 [tool.flake8]
 ignore = "E203, W503,"
 max-line-length = 150
+
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"
+write_to = "src/ansible_parser/_version.py"
