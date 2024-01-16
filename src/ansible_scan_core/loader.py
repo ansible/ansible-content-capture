@@ -52,7 +52,7 @@ def get_loader_version():
     version = ""
     # try to get version from the installed executable
     try:
-        version = pkg_resources.require("ansible-risk-insight")[0].version
+        version = pkg_resources.require("ansible-scan-core")[0].version
     except Exception:
         pass
     if version != "":

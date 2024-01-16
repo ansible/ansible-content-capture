@@ -55,7 +55,7 @@ action_group_index_name = "action_group_index.json"
 
 
 @dataclass
-class RAMClient(object):
+class KBClient(object):
     root_dir: str = ""
 
     findings_json_list_cache: list = field(default_factory=list)
@@ -132,13 +132,13 @@ class RAMClient(object):
 
         self.clear_old_cache()
 
-    def register_indices_to_ram(self, findings: Findings, include_test_contents: bool = False):
-        self.register_module_index_to_ram(findings=findings, include_test_contents=include_test_contents)
-        self.register_role_index_to_ram(findings=findings, include_test_contents=include_test_contents)
-        self.register_taskfile_index_to_ram(findings=findings, include_test_contents=include_test_contents)
-        self.register_action_group_index_to_ram(findings=findings)
+    def register_indices_to_kb(self, findings: Findings, include_test_contents: bool = False):
+        self.register_module_index_to_kb(findings=findings, include_test_contents=include_test_contents)
+        self.register_role_index_to_kb(findings=findings, include_test_contents=include_test_contents)
+        self.register_taskfile_index_to_kb(findings=findings, include_test_contents=include_test_contents)
+        self.register_action_group_index_to_kb(findings=findings)
 
-    def register_module_index_to_ram(self, findings: Findings, include_test_contents: bool = False):
+    def register_module_index_to_kb(self, findings: Findings, include_test_contents: bool = False):
         new_data_found = False
         modules = self.load_module_index()
         for module in findings.root_definitions.get("definitions", {}).get("modules", []):
@@ -194,7 +194,7 @@ class RAMClient(object):
             self.save_module_index(modules)
         return
 
-    def register_role_index_to_ram(self, findings: Findings, include_test_contents: bool = False):
+    def register_role_index_to_kb(self, findings: Findings, include_test_contents: bool = False):
         new_data_found = False
         roles = self.load_role_index()
         for role in findings.root_definitions.get("definitions", {}).get("roles", []):
@@ -224,7 +224,7 @@ class RAMClient(object):
             self.save_role_index(roles)
         return
 
-    def register_taskfile_index_to_ram(self, findings: Findings, include_test_contents: bool = False):
+    def register_taskfile_index_to_kb(self, findings: Findings, include_test_contents: bool = False):
         new_data_found = False
         taskfiles = self.load_taskfile_index()
         for taskfile in findings.root_definitions.get("definitions", {}).get("taskfiles", []):
@@ -254,7 +254,7 @@ class RAMClient(object):
             self.save_taskfile_index(taskfiles)
         return
 
-    def register_action_group_index_to_ram(self, findings: Findings, include_test_contents: bool = False):
+    def register_action_group_index_to_kb(self, findings: Findings, include_test_contents: bool = False):
         new_data_found = False
         action_groups = self.load_action_group_index()
 
@@ -333,8 +333,8 @@ class RAMClient(object):
         mappings = {}
         if os.path.exists(findings_path):
             findings = Findings.load(fpath=findings_path)
-            # use RAM only if no unresolved dependency
-            # (RAM should be fully-resolved specs as much as possible)
+            # use KB only if no unresolved dependency
+            # (KB should be fully-resolved specs as much as possible)
             if findings and (len(findings.extra_requirements) == 0 or allow_unresolved):
                 definitions = findings.root_definitions.get("definitions", {})
                 mappings = findings.root_definitions.get("mappings", {})
@@ -718,7 +718,7 @@ class RAMClient(object):
     def search_task(self, name, exact_match=False, max_match=-1, is_key=False, content_info=None, used_in=""):
         if max_match == 0:
             return []
-        # search task in RAM must be done for a specific content (collection/role)
+        # search task in KB must be done for a specific content (collection/role)
         # so give up search here when no content_info is provided
         if not content_info or not isinstance(content_info, dict):
             return []
@@ -864,7 +864,7 @@ class RAMClient(object):
         findings_json_list = findings_json_list_coll + findings_json_list_role
         self.findings_json_list_cache = findings_json_list
 
-    def list_all_ram_metadata(self):
+    def list_all_kb_metadata(self):
         if not self.findings_json_list_cache:
             self.init_findings_json_list_cache()
         findings_json_list = self.findings_json_list_cache
@@ -891,7 +891,7 @@ class RAMClient(object):
             return self.findings_search_cache[args_str]
 
         if not target_name:
-            raise ValueError("target name must be specified for searching RAM data")
+            raise ValueError("target name must be specified for searching KB data")
         if not target_version:
             target_version = "*"
         findings_json_list = self.findings_json_list_cache
@@ -1006,11 +1006,11 @@ class RAMClient(object):
     def diff(self, target_name, version1, version2):
         findings1 = self.search_findings(target_name=target_name, target_version=version1)
         if not findings1:
-            raise ValueError(f"{target_name}:{version1} is not found in RAM")
+            raise ValueError(f"{target_name}:{version1} is not found in KB")
 
         findings2 = self.search_findings(target_name=target_name, target_version=version2)
         if not findings2:
-            raise ValueError(f"{target_name}:{version2} is not found in RAM")
+            raise ValueError(f"{target_name}:{version2} is not found in KB")
 
         coll_defs1 = findings1.root_definitions.get("definitions", {}).get("collections", [])
         coll_defs2 = findings2.root_definitions.get("definitions", {}).get("collections", [])

@@ -360,6 +360,13 @@ class Object(Annotatable):
     type: str = ""
     key: str = ""
 
+    @property
+    def filepath(self):
+        if hasattr(self, "defined_in"):
+            return self.defined_in
+
+        raise ValueError(f"`filepath` is not supported for the object `{type(self)}`")
+
 
 @dataclass
 class ObjectList(JSONSerializable):
@@ -507,7 +514,7 @@ class RunTargetList(object):
 
 
 @dataclass
-class File(object):
+class File(Annotatable):
     type: str = "file"
     name: str = ""
     key: str = ""
@@ -521,8 +528,6 @@ class File(object):
     error: str = ""
     label: str = ""
     defined_in: str = ""
-
-    annotations: dict = field(default_factory=dict)
 
     def set_key(self):
         set_file_key(self)

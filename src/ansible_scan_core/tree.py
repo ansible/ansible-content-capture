@@ -38,7 +38,7 @@ from .models import (
     call_obj_from_spec,
 )
 from .model_loader import load_builtin_modules
-from .risk_assessment_model import RAMClient
+from .knowledge_base import KBClient
 
 
 obj_type_dict = {
@@ -405,9 +405,9 @@ def init_builtin_modules():
 
 class TreeLoader(object):
     def __init__(
-        self, root_definitions, ext_definitions, ram_client=None, target_playbook_path=None, target_taskfile_path=None, load_all_taskfiles=False
+        self, root_definitions, ext_definitions, kb_client=None, target_playbook_path=None, target_taskfile_path=None, load_all_taskfiles=False
     ):
-        self.ram_client: RAMClient = ram_client
+        self.kb_client: KBClient = kb_client
 
         self.org_root_definitions = root_definitions
         self.org_ext_definitions = ext_definitions
@@ -472,9 +472,9 @@ class TreeLoader(object):
         self.role_resolve_cache = {}
         self.taskfile_resolve_cache = {}
 
-        self.resolved_module_from_ram = {}
-        self.resolved_role_from_ram = {}
-        self.resolved_taskfile_from_ram = {}
+        self.resolved_module_from_kb = {}
+        self.resolved_role_from_kb = {}
+        self.resolved_taskfile_from_kb = {}
 
         self.extra_requirements = []
         self.extra_requirement_obj_set = set()
@@ -550,7 +550,7 @@ class TreeLoader(object):
         if call_obj is not None:
             obj_list.add(call_obj, update_dict=False)
             _history.append(key)
-        children_keys, from_ram, handover = self._get_children_keys(obj, handover_from_upper_node=handover)
+        children_keys, from_kb, handover = self._get_children_keys(obj, handover_from_upper_node=handover)
         for i, c_key in enumerate(children_keys):
             loop_found = False
             loop_obj = None
@@ -572,8 +572,8 @@ class TreeLoader(object):
                     c_obj = child_objects.items[0]
                     if taskcall.spec.executable_type == ExecutableType.MODULE_TYPE:
                         taskcall.module = c_obj.spec
-                        if c_key in from_ram:
-                            req_info = from_ram[c_key]
+                        if c_key in from_kb:
+                            req_info = from_kb[c_key]
                             taskcall.spec.possible_candidates = [(c_obj.spec.fqcn, req_info)]
                         else:
                             taskcall.spec.resolved_name = c_obj.spec.fqcn
@@ -584,8 +584,8 @@ class TreeLoader(object):
                             "key": c_obj.spec.key,
                         }
                     elif taskcall.spec.executable_type == ExecutableType.ROLE_TYPE:
-                        if c_key in from_ram:
-                            req_info = from_ram[c_key]
+                        if c_key in from_kb:
+                            req_info = from_kb[c_key]
                             taskcall.spec.possible_candidates = [(c_obj.spec.fqcn, req_info)]
                         else:
                             taskcall.spec.resolved_name = c_obj.spec.fqcn
@@ -596,8 +596,8 @@ class TreeLoader(object):
                             "key": c_obj.spec.key,
                         }
                     elif taskcall.spec.executable_type == ExecutableType.TASKFILE_TYPE:
-                        if c_key in from_ram:
-                            req_info = from_ram[c_key]
+                        if c_key in from_kb:
+                            req_info = from_kb[c_key]
                             taskcall.spec.possible_candidates = [(c_obj.spec.key, req_info)]
                         else:
                             taskcall.spec.resolved_name = c_obj.spec.key
@@ -664,7 +664,7 @@ class TreeLoader(object):
         return current_graph
 
     # get definition object from root/ext definitions
-    def get_object(self, obj_key, search_ram=False):
+    def get_object(self, obj_key, search_kb=False):
         obj_type = detect_type(obj_key)
         if obj_type == "":
             raise ValueError('failed to detect object type from key "{}"'.format(obj_key))
@@ -678,8 +678,8 @@ class TreeLoader(object):
         if obj is not None:
             return obj
 
-        if search_ram and self.ram_client:
-            matched_obj = self.ram_client.get_object_by_key(obj_key)
+        if search_kb and self.kb_client:
+            matched_obj = self.kb_client.get_object_by_key(obj_key)
             obj = matched_obj.get("object", None)
             if obj is not None:
                 return obj
@@ -696,7 +696,7 @@ class TreeLoader(object):
         if isinstance(obj, CallObject):
             return self._get_children_keys(obj.spec)
         children_keys = []
-        from_ram = {}
+        from_kb = {}
         handover = {}
         if isinstance(obj, Playbook):
             children_keys = obj.plays
@@ -721,12 +721,12 @@ class TreeLoader(object):
                     if resolved_role_key != "":
                         self.role_resolve_cache[rip.name] = resolved_role_key
 
-                if resolved_role_key == "" and self.ram_client is not None:
-                    if rip.name in self.resolved_role_from_ram:
-                        resolved_role_key, req_info = self.resolved_role_from_ram[rip.name]
-                        from_ram[resolved_role_key] = req_info
+                if resolved_role_key == "" and self.kb_client is not None:
+                    if rip.name in self.resolved_role_from_kb:
+                        resolved_role_key, req_info = self.resolved_role_from_kb[rip.name]
+                        from_kb[resolved_role_key] = req_info
                     else:
-                        matched_roles = self.ram_client.search_role(rip.name)
+                        matched_roles = self.kb_client.search_role(rip.name)
                         if len(matched_roles) > 0:
                             resolved_role_key = matched_roles[0]["object"].key
                             self.ext_definitions["roles"].add(matched_roles[0]["object"])
@@ -756,8 +756,8 @@ class TreeLoader(object):
                                         }
                                     )
                                     self.extra_requirement_obj_set.add(offspr_obj["object"].key)
-                            self.resolved_role_from_ram[rip.name] = (resolved_role_key, matched_roles[0]["defined_in"])
-                            from_ram[resolved_role_key] = matched_roles[0]["defined_in"]
+                            self.resolved_role_from_kb[rip.name] = (resolved_role_key, matched_roles[0]["defined_in"])
+                            from_kb[resolved_role_key] = matched_roles[0]["defined_in"]
 
                 if resolved_role_key != "":
                     children_keys.append(resolved_role_key)
@@ -793,12 +793,12 @@ class TreeLoader(object):
                     resolved_key = resolve_module(target_name, self.dicts["modules"], self.module_redirects)
                     if resolved_key != "":
                         self.module_resolve_cache[target_name] = resolved_key
-                if resolved_key == "" and self.ram_client is not None:
-                    if target_name in self.resolved_module_from_ram:
-                        resolved_key, req_info = self.resolved_module_from_ram[target_name]
-                        from_ram[resolved_key] = req_info
+                if resolved_key == "" and self.kb_client is not None:
+                    if target_name in self.resolved_module_from_kb:
+                        resolved_key, req_info = self.resolved_module_from_kb[target_name]
+                        from_kb[resolved_key] = req_info
                     else:
-                        matched_modules = self.ram_client.search_module(target_name)
+                        matched_modules = self.kb_client.search_module(target_name)
                         if len(matched_modules) > 0:
                             resolved_key = matched_modules[0]["object"].key
                             self.ext_definitions["modules"].add(matched_modules[0]["object"])
@@ -813,8 +813,8 @@ class TreeLoader(object):
                                         }
                                     )
                                     self.extra_requirement_obj_set.add(matched_modules[0]["object"].key)
-                            self.resolved_module_from_ram[target_name] = (resolved_key, matched_modules[0]["defined_in"])
-                            from_ram[resolved_key] = matched_modules[0]["defined_in"]
+                            self.resolved_module_from_kb[target_name] = (resolved_key, matched_modules[0]["defined_in"])
+                            from_kb[resolved_key] = matched_modules[0]["defined_in"]
                 if resolved_key == "":
                     if target_name not in self.resolve_failures["module"]:
                         self.resolve_failures["module"][target_name] = 0
@@ -837,12 +837,12 @@ class TreeLoader(object):
                     )
                     if resolved_key != "":
                         self.role_resolve_cache[target_name] = resolved_key
-                if resolved_key == "" and self.ram_client is not None:
-                    if target_name in self.resolved_role_from_ram:
-                        resolved_key, req_info = self.resolved_role_from_ram[target_name]
-                        from_ram[resolved_key] = req_info
+                if resolved_key == "" and self.kb_client is not None:
+                    if target_name in self.resolved_role_from_kb:
+                        resolved_key, req_info = self.resolved_role_from_kb[target_name]
+                        from_kb[resolved_key] = req_info
                     else:
-                        matched_roles = self.ram_client.search_role(target_name)
+                        matched_roles = self.kb_client.search_role(target_name)
                         if len(matched_roles) > 0:
                             resolved_key = matched_roles[0]["object"].key
                             self.ext_definitions["roles"].add(matched_roles[0]["object"])
@@ -869,8 +869,8 @@ class TreeLoader(object):
                                         }
                                     )
                                     self.extra_requirement_obj_set.add(offspr_obj["object"].key)
-                            self.resolved_role_from_ram[target_name] = (resolved_key, matched_roles[0]["defined_in"])
-                            from_ram[resolved_key] = matched_roles[0]["defined_in"]
+                            self.resolved_role_from_kb[target_name] = (resolved_key, matched_roles[0]["defined_in"])
+                            from_kb[resolved_key] = matched_roles[0]["defined_in"]
                 if resolved_key == "":
                     if target_name not in self.resolve_failures["role"]:
                         self.resolve_failures["role"][target_name] = 0
@@ -888,12 +888,12 @@ class TreeLoader(object):
                     )
                     if resolved_key != "":
                         self.taskfile_resolve_cache[target_name] = resolved_key
-                if resolved_key == "" and self.ram_client is not None:
-                    if obj.executable in self.resolved_role_from_ram:
-                        resolved_key, req_info = self.resolved_role_from_ram[target_name]
-                        from_ram[resolved_key] = req_info
+                if resolved_key == "" and self.kb_client is not None:
+                    if obj.executable in self.resolved_role_from_kb:
+                        resolved_key, req_info = self.resolved_role_from_kb[target_name]
+                        from_kb[resolved_key] = req_info
                     else:
-                        matched_taskfiles = self.ram_client.search_taskfile(target_name, from_path=obj.defined_in, from_key=obj.key)
+                        matched_taskfiles = self.kb_client.search_taskfile(target_name, from_path=obj.defined_in, from_key=obj.key)
                         if len(matched_taskfiles) > 0:
                             resolved_key = matched_taskfiles[0]["object"].key
                             self.ext_definitions["taskfiles"].add(matched_taskfiles[0]["object"], update_dict=False)
@@ -920,8 +920,8 @@ class TreeLoader(object):
                                         }
                                     )
                                     self.extra_requirement_obj_set.add(offspr_obj["object"].key)
-                            self.resolved_taskfile_from_ram[target_name] = (resolved_key, matched_taskfiles[0]["defined_in"])
-                            from_ram[resolved_key] = matched_taskfiles[0]["defined_in"]
+                            self.resolved_taskfile_from_kb[target_name] = (resolved_key, matched_taskfiles[0]["defined_in"])
+                            from_kb[resolved_key] = matched_taskfiles[0]["defined_in"]
                 if resolved_key == "":
                     if target_name not in self.resolve_failures["taskfile"]:
                         self.resolve_failures["taskfile"][target_name] = 0
@@ -929,7 +929,7 @@ class TreeLoader(object):
 
             if resolved_key != "":
                 children_keys.append(resolved_key)
-        return children_keys, from_ram, handover
+        return children_keys, from_kb, handover
 
     def node_objects(self, tree):
         loaded = {}

@@ -28,7 +28,6 @@ from .models import (
     Load,
     LoadType,
     ObjectList,
-    TaskCall,
     TaskCallsInTree,
 )
 from .loader import (
@@ -46,14 +45,13 @@ from .details.argument_value import set_argument_value_details
 from .details.module import set_module_details
 from .details.variable import set_variable_details
 from .findings import Findings
-from .risk_assessment_model import RAMClient
+from .knowledge_base import KBClient
 import ansible_scan_core.logger as logger
 from .utils import (
     is_url,
     is_local_path,
     escape_url,
     escape_local_path,
-    summarize_findings,
     split_target_playbook_fullpath,
     split_target_taskfile_fullpath,
     equal,
@@ -545,32 +543,15 @@ class SingleScan(object):
                     break
         return
 
-    def construct_trees(self, ram_client=None):
+    def construct_trees(self, kb_client=None):
         trees, additional, extra_requirements, resolve_failures = tree(
             self.root_definitions,
             self.ext_definitions,
-            ram_client,
+            kb_client,
             self.target_playbook_name,
             self.target_taskfile_name,
             self.load_all_taskfiles,
         )
-
-        # set annotation for spec mutations
-        if self.spec_mutations_from_previous_scan:
-            spec_mutations = self.spec_mutations_from_previous_scan
-            for _tree in trees:
-                for callobj in _tree.items:
-                    if not isinstance(callobj, TaskCall):
-                        continue
-                    obj_key = callobj.spec.key
-                    if obj_key in spec_mutations:
-                        m = spec_mutations[obj_key]
-                        rule_id = m.rule.rule_id
-                        value = {
-                            "rule_id": rule_id,
-                            "changes": m.changes,
-                        }
-                        callobj.set_annotation(key="spec.mutations", value=value, rule_id=rule_id)
 
         self.trees = trees
         self.additional = additional
@@ -589,7 +570,7 @@ class SingleScan(object):
                     logger.info("  tree file saved")
         return
 
-    def resolve_variables(self, ram_client=None):
+    def resolve_variables(self, kb_client=None):
         taskcalls_in_trees = resolve(self.trees, self.additional)
         self.taskcalls_in_trees = taskcalls_in_trees
 
@@ -604,7 +585,7 @@ class SingleScan(object):
             open(tasks_in_t_path, "w").write("\n".join(tasks_in_t_lines))
         return
 
-    def set_details(self, ram_client: RAMClient=None):
+    def set_details(self, kb_client: KBClient=None):
         target_name = self.name
         if self.collection_name:
             target_name = self.collection_name
@@ -616,7 +597,7 @@ class SingleScan(object):
                 continue
             for taskcall in taskcalls_in_tree.taskcalls:
                 set_module_details(task=taskcall)
-                set_argument_key_details(task=taskcall, ram_client=ram_client)
+                set_argument_key_details(task=taskcall, kb_client=kb_client)
                 set_argument_value_details(task=taskcall)
                 set_variable_details(task=taskcall)
 
@@ -701,10 +682,10 @@ class AnsibleScanner(object):
 
     root_dir: str = ""
 
-    ram_client: RAMClient = None
-    read_ram: bool = True
-    read_ram_for_dependency: bool = True
-    write_ram: bool = False
+    kb_client: KBClient = None
+    read_kb: bool = True
+    read_kb_for_dependency: bool = True
+    write_kb: bool = False
 
     persist_dependency_cache: bool = False
 
@@ -718,7 +699,7 @@ class AnsibleScanner(object):
 
     show_all: bool = False
     pretty: bool = False
-    silent: bool = False
+    silent: bool = True
     output_format: str = ""
 
     _current: SingleScan = None
@@ -729,8 +710,8 @@ class AnsibleScanner(object):
 
         if not self.root_dir:
             self.root_dir = self.config.data_dir
-        if not self.ram_client:
-            self.ram_client = RAMClient(root_dir=self.root_dir)
+        if not self.kb_client:
+            self.kb_client = KBClient(root_dir=self.root_dir)
         self._parser = Parser(
             do_save=self.do_save,
             use_ansible_doc=self.use_ansible_doc,
@@ -824,17 +805,17 @@ class AnsibleScanner(object):
 
         self.record_begin(time_records, "metadata_load")
         metdata_loaded = False
-        read_root_from_ram = (
-            self.read_ram and scandata.type not in [LoadType.PLAYBOOK, LoadType.TASKFILE, LoadType.PROJECT] and not is_local_path(scandata.name)
+        read_root_from_kb = (
+            self.read_kb and scandata.type not in [LoadType.PLAYBOOK, LoadType.TASKFILE, LoadType.PROJECT] and not is_local_path(scandata.name)
         )
-        if read_root_from_ram:
-            loaded, metadata, dependencies = self.load_metadata_from_ram(scandata.type, scandata.name, scandata.version)
+        if read_root_from_kb:
+            loaded, metadata, dependencies = self.load_metadata_from_kb(scandata.type, scandata.name, scandata.version)
             logger.debug(f"metadata loaded: {loaded}")
             if loaded:
                 scandata.set_metadata(metadata, dependencies)
                 metdata_loaded = True
                 if not self.silent:
-                    logger.debug(f'Use metadata for "{scandata.name}" in RAM DB')
+                    logger.debug(f'Use metadata for "{scandata.name}" in KB')
 
         if scandata.install_dependencies and not metdata_loaded:
             logger.debug(f"start preparing {scandata.type} {scandata.name}")
@@ -891,30 +872,30 @@ class AnsibleScanner(object):
                     key = "{}-{}".format(ext_type, ext_name)
                     if role_name_for_local_dep:
                         key = "{}-{}".format(ext_type, role_name_for_local_dep)
-                    read_ram_for_dependency = self.read_ram or self.read_ram_for_dependency
+                    read_kb_for_dependency = self.read_kb or self.read_kb_for_dependency
 
                     dep_loaded = False
-                    if read_ram_for_dependency:
-                        # searching findings from Ansible Scanner RAM and use them if found
-                        dep_loaded, ext_defs = self.load_definitions_from_ram(ext_type, ext_name, ext_ver, ext_hash)
+                    if read_kb_for_dependency:
+                        # searching findings from Ansible Scanner KB and use them if found
+                        dep_loaded, ext_defs = self.load_definitions_from_kb(ext_type, ext_name, ext_ver, ext_hash)
                         if dep_loaded:
                             scandata.ext_definitions[key] = ext_defs
                             if not self.silent:
-                                logger.debug(f'Use spec data for "{ext_name}" in RAM DB')
+                                logger.debug(f'Use spec data for "{ext_name}" in KB')
 
                     if not dep_loaded:
-                        # if the dependency was not found in RAM and if the target path does not exist,
+                        # if the dependency was not found in KB and if the target path does not exist,
                         # then we give up getting dependency data here
                         if not os.path.exists(ext_target_path):
                             continue
 
-                        # scan dependencies and save findings to Ansible Scanner RAM
+                        # scan dependencies and save findings to Ansible Scanner KB
                         dep_scanner = AnsibleScanner(
                             root_dir=self.root_dir,
-                            ram_client=self.ram_client,
-                            read_ram=read_ram_for_dependency,
-                            read_ram_for_dependency=self.read_ram_for_dependency,
-                            write_ram=self.write_ram,
+                            kb_client=self.kb_client,
+                            read_kb=read_kb_for_dependency,
+                            read_kb_for_dependency=self.read_kb_for_dependency,
+                            write_kb=self.write_kb,
                             use_ansible_doc=self.use_ansible_doc,
                             do_save=self.do_save,
                             silent=True,
@@ -954,13 +935,13 @@ class AnsibleScanner(object):
 
         loaded = False
         self.record_begin(time_records, "target_load")
-        if read_root_from_ram:
-            loaded, root_defs = self.load_definitions_from_ram(scandata.type, scandata.name, scandata.version, scandata.hash, allow_unresolved=True)
+        if read_root_from_kb:
+            loaded, root_defs = self.load_definitions_from_kb(scandata.type, scandata.name, scandata.version, scandata.hash, allow_unresolved=True)
             logger.debug(f"spec data loaded: {loaded}")
             if loaded:
                 scandata.root_definitions = root_defs
                 if not self.silent:
-                    logger.info("Use spec data in RAM DB")
+                    logger.info("Use spec data in KB")
         self.record_end(time_records, "target_load")
 
         if not loaded:
@@ -978,31 +959,31 @@ class AnsibleScanner(object):
             logger.debug(f"playbooks: {playbooks_num}, roles: {roles_num}, taskfiles: {taskfiles_num}, tasks: {tasks_num}, modules: {modules_num}")
 
         # load_only is True when this scanner is scanning dependency
-        # otherwise, move on tree construction / rule evaluation
+        # otherwise, move on tree construction
         if load_only:
             return None
 
-        _ram_client = None
-        if self.read_ram:
-            _ram_client = self.ram_client
+        _kb_client = None
+        if self.read_kb:
+            _kb_client = self.kb_client
 
         self.record_begin(time_records, "tree_construction")
-        scandata.construct_trees(_ram_client)
+        scandata.construct_trees(_kb_client)
         self.record_end(time_records, "tree_construction")
         if not self.silent:
             logger.debug("construct_trees() done")
 
         self.record_begin(time_records, "variable_resolution")
-        scandata.resolve_variables(_ram_client)
+        scandata.resolve_variables(_kb_client)
         self.record_end(time_records, "variable_resolution")
         if not self.silent:
             logger.debug("resolve_variables() done")
 
-        self.record_begin(time_records, "apply_rules")
-        scandata.set_details(_ram_client)
-        self.record_end(time_records, "apply_rules")
+        self.record_begin(time_records, "set_details")
+        scandata.set_details(_kb_client)
+        self.record_end(time_records, "set_details")
         if not self.silent:
-            logger.debug("apply_rules() done")
+            logger.debug("set_details() done")
 
         scandata.add_time_records(time_records=time_records)
 
@@ -1012,24 +993,16 @@ class AnsibleScanner(object):
             # print("ext definitions:", ext_counts)
             # print("root definitions:", root_counts)
 
-        # save RAM data
-        if self.write_ram and scandata.type not in [LoadType.PLAYBOOK, LoadType.TASKFILE, LoadType.PROJECT]:
-            self.register_findings_to_ram(scandata.findings)
-            self.register_indices_to_ram(scandata.findings, include_test_contents)
+        # save KB data
+        if self.write_kb and scandata.type not in [LoadType.PLAYBOOK, LoadType.TASKFILE, LoadType.PROJECT]:
+            self.register_findings_to_kb(scandata.findings)
+            self.register_indices_to_kb(scandata.findings, include_test_contents)
 
         if scandata.out_dir is not None and scandata.out_dir != "":
-            self.save_rule_result(scandata.findings, scandata.out_dir)
-            if not self.silent:
-                print("The rule result is saved at {}".format(scandata.out_dir))
-
             if objects:
                 self.save_definitions(scandata.root_definitions, scandata.out_dir)
                 if not self.silent:
                     print("The objects is saved at {}".format(scandata.out_dir))
-
-        if not self.silent:
-            summary = summarize_findings(scandata.findings, self.show_all)
-            print(summary)
 
         if self.pretty:
             data_str = ""
@@ -1081,14 +1054,14 @@ class AnsibleScanner(object):
                     spec_mutations_from_previous_scan=scandata.spec_mutations,
                 )
 
-        return scandata.findings.report.get("ansible_scan_result", None)
+        return scandata
 
-    def load_metadata_from_ram(self, type, name, version):
-        loaded, metadata, dependencies = self.ram_client.load_metadata_from_findings(type, name, version)
+    def load_metadata_from_kb(self, type, name, version):
+        loaded, metadata, dependencies = self.kb_client.load_metadata_from_findings(type, name, version)
         return loaded, metadata, dependencies
 
-    def load_definitions_from_ram(self, type, name, version, hash, allow_unresolved=False):
-        loaded, definitions, mappings = self.ram_client.load_definitions_from_findings(type, name, version, hash, allow_unresolved)
+    def load_definitions_from_kb(self, type, name, version, hash, allow_unresolved=False):
+        loaded, definitions, mappings = self.kb_client.load_definitions_from_findings(type, name, version, hash, allow_unresolved)
         definitions_dict = {}
         if loaded:
             definitions_dict = {
@@ -1097,23 +1070,14 @@ class AnsibleScanner(object):
             }
         return loaded, definitions_dict
 
-    def register_findings_to_ram(self, findings: Findings):
-        self.ram_client.register(findings)
+    def register_findings_to_kb(self, findings: Findings):
+        self.kb_client.register(findings)
 
-    def register_indices_to_ram(self, findings: Findings, include_test_contents: bool = False):
-        self.ram_client.register_indices_to_ram(findings, include_test_contents)
+    def register_indices_to_kb(self, findings: Findings, include_test_contents: bool = False):
+        self.kb_client.register_indices_to_kb(findings, include_test_contents)
 
     def save_findings(self, findings: Findings, out_dir: str):
-        self.ram_client.save_findings(findings, out_dir)
-
-    def save_rule_result(self, findings: Findings, out_dir: str):
-        if out_dir == "":
-            raise ValueError("output dir must be a non-empty value")
-
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir, exist_ok=True)
-
-        findings.save_rule_result(fpath=os.path.join(out_dir, "rule_result.json"))
+        self.kb_client.save_findings(findings, out_dir)
 
     def save_definitions(self, definitions: dict, out_dir: str):
         if out_dir == "":
@@ -1136,8 +1100,8 @@ class AnsibleScanner(object):
             name = self._current.name
             version = self._current.version
             hash = self._current.hash
-            out_dir = self.ram_client.make_findings_dir_path(type, name, version, hash)
-        self.ram_client.save_error(error, out_dir)
+            out_dir = self.kb_client.make_findings_dir_path(type, name, version, hash)
+        self.kb_client.save_error(error, out_dir)
 
     def record_begin(self, time_records: dict, record_name: str):
         time_records[record_name] = {}
@@ -1151,8 +1115,8 @@ class AnsibleScanner(object):
         time_records[record_name]["elapsed"] = elapsed
 
 
-def tree(root_definitions, ext_definitions, ram_client=None, target_playbook_path=None, target_taskfile_path=None, load_all_taskfiles=False):
-    tl = TreeLoader(root_definitions, ext_definitions, ram_client, target_playbook_path, target_taskfile_path, load_all_taskfiles)
+def tree(root_definitions, ext_definitions, kb_client=None, target_playbook_path=None, target_taskfile_path=None, load_all_taskfiles=False):
+    tl = TreeLoader(root_definitions, ext_definitions, kb_client, target_playbook_path, target_taskfile_path, load_all_taskfiles)
     trees, additional = tl.run()
     if trees is None:
         raise ValueError("failed to get trees")

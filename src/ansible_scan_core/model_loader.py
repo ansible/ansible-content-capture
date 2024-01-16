@@ -23,7 +23,6 @@ import traceback
 
 try:
     # if `libyaml` is available, use C based loader for performance
-    import _yaml  # noqa: F401
     from yaml import CSafeLoader as Loader
 except Exception:
     # otherwise, use Python based loader

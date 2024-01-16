@@ -19,7 +19,7 @@ from ansible_scan_core.models import (
     ExecutableType,
     ActionGroupMetadata,
 )
-from ansible_scan_core.risk_assessment_model import RAMClient
+from ansible_scan_core.knowledge_base import KBClient
 
 
 def is_set_fact(module_fqcn):
@@ -30,7 +30,7 @@ def is_meta(module_fqcn):
     return module_fqcn == "ansible.builtin.meta"
 
 
-def set_argument_key_details(task: TaskCall, ram_client: RAMClient=None):
+def set_argument_key_details(task: TaskCall, kb_client: KBClient=None):
 
     if task.spec.executable_type == ExecutableType.MODULE_TYPE and task.module and task.module.arguments:
 
@@ -48,13 +48,13 @@ def set_argument_key_details(task: TaskCall, ram_client: RAMClient=None):
             default_args = task.module_defaults[module_short]
         elif module_fqcn and module_fqcn in task.module_defaults:
             default_args = task.module_defaults[module_fqcn]
-        elif ram_client:
+        elif kb_client:
             for group_name in task.module_defaults:
                 tmp_args = task.module_defaults[group_name]
                 found = False
                 if not group_name.startswith("group/"):
                     continue
-                groups = ram_client.search_action_group(group_name)
+                groups = kb_client.search_action_group(group_name)
                 if not groups:
                     continue
                 for group_dict in groups:
