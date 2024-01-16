@@ -6,7 +6,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ansible-parser"
+name = "ansible-scan-core"
 description = "My package description"
 readme = "README.rst"
 requires-python = ">=3.7"
@@ -56,4 +56,4 @@ max-line-length = 150
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
-write_to = "src/ansible_parser/_version.py"
+write_to = "src/ansible_scan_core/_version.py"
