@@ -214,6 +214,7 @@ def load_repository(
         relative = os.path.abspath(repo_path)[len(os.path.abspath(path)) :]
         _path = os.path.join(name, relative)
     repoObj.path = _path
+    repoObj.filepath = _path
     repoObj.installed_collections_path = installed_collections_path
     repoObj.installed_roles_path = installed_roles_path
     repoObj.target_playbook_path = target_playbook_path
@@ -264,6 +265,7 @@ def load_inventory(path, basedir=""):
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     invObj.defined_in = defined_in
+    invObj.filepath = defined_in
     base_parts = os.path.splitext(os.path.basename(fullpath))
     invObj.name = base_parts[0]
     file_ext = base_parts[1]
@@ -376,6 +378,7 @@ def load_file(
     fObj.error = error
     fObj.label = label
     fObj.defined_in = defined_in
+    fObj.filepath = defined_in
     if role_name != "":
         fObj.role = role_name
     if collection_name != "":
@@ -710,6 +713,7 @@ def load_play(
 
     pbObj.name = play_name
     pbObj.defined_in = path
+    pbObj.filepath = path
     pbObj.import_module = import_module
     pbObj.import_playbook = import_playbook
     pbObj.pre_tasks = pre_tasks
@@ -753,6 +757,7 @@ def load_roleinplay(
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     ripObj.defined_in = defined_in
+    ripObj.filepath = defined_in
     ripObj.role = role_name
     ripObj.collection = collection_name
     ripObj.role_index = role_index
@@ -781,6 +786,7 @@ def load_playbook(path="", yaml_str="", role_name="", collection_name="", basedi
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     pbObj.defined_in = defined_in
+    pbObj.filepath = defined_in
     pbObj.name = os.path.basename(fullpath)
     pbObj.role = role_name
     pbObj.collection = collection_name
@@ -986,6 +992,7 @@ def load_role(
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     roleObj.defined_in = defined_in
+    roleObj.filepath = defined_in
     is_test = is_test_object(defined_in)
 
     collection = ""
@@ -1321,6 +1328,7 @@ def load_module(module_file_path, collection_name="", role_name="", basedir="", 
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     moduleObj.defined_in = defined_in
+    moduleObj.filepath = defined_in
 
     arguments = []
     doc_yaml = ""
@@ -1560,6 +1568,7 @@ def load_task(
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     taskObj.defined_in = defined_in
+    taskObj.filepath = defined_in
     taskObj.index = index
     taskObj.play_index = play_index
     taskObj.executable = executable
@@ -1638,6 +1647,7 @@ def load_taskfile(path, yaml_str="", role_name="", collection_name="", basedir="
             if defined_in.startswith("/"):
                 defined_in = defined_in[1:]
     tfObj.defined_in = defined_in
+    tfObj.filepath = defined_in
     if role_name != "":
         tfObj.role = role_name
     if collection_name != "":
@@ -1873,6 +1883,7 @@ def load_collection(
         if path.startswith(basedir):
             path = path[len(basedir) :]
     colObj.path = path
+    colObj.filepath = path
     colObj.playbooks = playbooks
     colObj.roles = roles
     colObj.modules = modules

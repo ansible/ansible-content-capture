@@ -48,7 +48,7 @@ def trim_suffix(txt, suffix_patterns=[]):
     return txt
 
 
-def get_loader_version():
+def get_scanner_version():
     version = ""
     # try to get version from the installed executable
     try:
@@ -155,7 +155,7 @@ def filepath_to_target_name(filepath):
 #     else:
 #         logger.info("start loading {} {}(s)".format(num, target_type))
 #     output_path = args.output_path
-#     loader_version = get_loader_version()
+#     loader_version = get_scanner_version()
 
 #     def load_single(single_input):
 #         i = single_input[0]

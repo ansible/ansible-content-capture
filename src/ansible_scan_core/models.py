@@ -36,6 +36,8 @@ from .keyutil import (
     set_taskfile_key,
     set_file_key,
     set_call_object_key,
+    key_delimiter,
+    get_obj_type,
 )
 from .utils import (
     recursive_copy_dict,
@@ -360,13 +362,6 @@ class Object(Annotatable):
     type: str = ""
     key: str = ""
 
-    @property
-    def filepath(self):
-        if hasattr(self, "defined_in"):
-            return self.defined_in
-
-        raise ValueError(f"`filepath` is not supported for the object `{type(self)}`")
-
 
 @dataclass
 class ObjectList(JSONSerializable):
@@ -528,6 +523,7 @@ class File(Annotatable):
     error: str = ""
     label: str = ""
     defined_in: str = ""
+    filepath: str = ""
 
     def set_key(self):
         set_file_key(self)
@@ -571,6 +567,7 @@ class Module(Object, Resolvable):
     examples: str = ""
     arguments: list = field(default_factory=list)
     defined_in: str = ""
+    filepath: str = ""
     builtin: bool = False
     used_in: list = field(default_factory=list)  # resolved later
 
@@ -597,6 +594,7 @@ class Collection(Object, Resolvable):
     type: str = "collection"
     name: str = ""
     path: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
     metadata: dict = field(default_factory=dict)
@@ -696,6 +694,7 @@ class Task(Object, Resolvable):
     index: int = -1
     play_index: int = -1
     defined_in: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
     role: str = ""
@@ -1243,6 +1242,7 @@ class TaskFile(Object, Resolvable):
     type: str = "taskfile"
     name: str = ""
     defined_in: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
     tasks: list = field(default_factory=list)
@@ -1286,6 +1286,7 @@ class Role(Object, Resolvable):
     type: str = "role"
     name: str = ""
     defined_in: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
     fqcn: str = ""
@@ -1340,6 +1341,7 @@ class RoleInPlay(Object, Resolvable):
     name: str = ""
     options: dict = field(default_factory=dict)
     defined_in: str = ""
+    filepath: str = ""
     role_index: int = -1
     play_index: int = -1
 
@@ -1371,6 +1373,7 @@ class Play(Object, Resolvable):
     type: str = "play"
     name: str = ""
     defined_in: str = ""
+    filepath: str = ""
     index: int = -1
     key: str = ""
     local_key: str = ""
@@ -1430,6 +1433,7 @@ class Playbook(Object, Resolvable):
     type: str = "playbook"
     name: str = ""
     defined_in: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
 
@@ -1479,6 +1483,7 @@ class Inventory(JSONSerializable):
     type: str = "inventory"
     name: str = ""
     defined_in: str = ""
+    filepath: str = ""
     inventory_type: str = ""
     group_name: str = ""
     host_name: str = ""
@@ -1490,6 +1495,7 @@ class Repository(Object, Resolvable):
     type: str = "repository"
     name: str = ""
     path: str = ""
+    filepath: str = ""
     key: str = ""
     local_key: str = ""
 
@@ -1766,3 +1772,259 @@ class ActionGroupMetadata(object):
             and self.version == agm.version
             and self.hash == agm.hash
         )
+
+
+
+@dataclass
+class InputData:
+    index: int = 0
+    total_num: int = 0
+    type: str = ""
+    name: str = ""
+    path: str = ""
+    yaml: str = ""
+    metadata: dict = field(default_factory=dict)
+
+
+attr_list = [
+    "collections",
+    "modules",
+    "playbooks",
+    "plays",
+    "projects",
+    "roles",
+    "taskfiles",
+    "tasks",
+    "files",
+]
+
+
+@dataclass
+class ScanResult(object):
+    source: dict = field(default_factory=dict)
+    source_id: str = ""
+
+    file_inventory: list = field(default_factory=list)
+
+    collections: list = field(default_factory=list)
+    modules: list = field(default_factory=list)
+    playbooks: list = field(default_factory=list)
+    plays: list = field(default_factory=list)
+    projects: list = field(default_factory=list)
+    roles: list = field(default_factory=list)
+    taskfiles: list = field(default_factory=list)
+    tasks: list = field(default_factory=list)
+    files: list = field(default_factory=list)
+
+    path: str = ""
+    scan_timestamp: str = ""
+    scan_time_detail: list = field(default_factory=list)
+    dir_size: int = 0
+    scanner_version: str = ""
+
+    # only used for KB conversion
+    scan_metadata: dict = field(default_factory=dict)
+    dependencies: list = field(default_factory=list)
+
+    @classmethod
+    def from_source_objects(
+        cls,
+        source: dict,
+        file_inventory: list,
+        objects: list,
+        metadata: dict,
+        scan_time: list,
+        dir_size: int,
+        scan_metadata: dict={},
+        dependencies: list=[],
+        ):
+        proj = cls()
+        proj.source = source
+        if source:
+            proj.source_id = json.dumps(source, separators=(',', ':'))
+
+        proj.file_inventory = file_inventory
+
+        for obj in objects:
+            proj.add_object(obj)
+
+        proj.path = metadata.get("name", "")
+        proj.scan_timestamp = metadata.get("scan_timestamp", "")
+        proj.scanner_version = metadata.get("scanner_version", "")
+        proj.scan_time_detail = scan_time
+        proj.dir_size = dir_size
+
+        proj.scan_metadata = scan_metadata
+        proj.dependencies = dependencies
+        return proj
+
+    def add_object(self, obj: Object):
+        obj_type = obj.type + "s"
+        objects_per_type = getattr(self, obj_type, [])
+        objects_per_type.append(obj)
+        setattr(self, obj_type, objects_per_type)
+        return
+
+    def get_object(self, key: str=""):
+        if key:
+            obj_type = get_obj_type(key) + "s"
+            objects_per_type = getattr(self, obj_type, [])
+            for obj in objects_per_type:
+                if obj.key == key:
+                    return obj
+        return None
+
+    def get_all_call_sequences(self, follow_include: bool=True):
+        found_taskfile_keys = set()
+        all_call_sequences = []
+        for p in self.playbooks:
+            call_graph = self._get_call_graph(obj=p, follow_include=follow_include)
+            call_seq = self.call_graph2sequence(call_graph)
+            all_call_sequences.append(call_seq)
+            tmp_taskfile_keys = set([obj.key for obj in call_seq if isinstance(obj, TaskFile)])
+            found_taskfile_keys = found_taskfile_keys.union(tmp_taskfile_keys)
+        for r in self.roles:
+            call_graph = self._get_call_graph(obj=r, follow_include=follow_include)
+            call_seq = self.call_graph2sequence(call_graph)
+            all_call_sequences.append(call_seq)
+            tmp_taskfile_keys = set([obj.key for obj in call_seq if isinstance(obj, TaskFile)])
+            found_taskfile_keys = found_taskfile_keys.union(tmp_taskfile_keys)
+        for tf in self.taskfiles:
+            if tf.key in found_taskfile_keys:
+                continue
+            call_graph = self._get_call_graph(obj=tf, follow_include=follow_include)
+            call_seq = self.call_graph2sequence(call_graph)
+            all_call_sequences.append(call_seq)
+        return all_call_sequences
+
+    # NOTE: currently this returns only 1 sequence found first
+    def get_call_sequence_for_task(self, task: Task, follow_include: bool=True):
+        target_key = task.key
+        all_call_seqs = self.get_all_call_sequences(follow_include=follow_include)
+        found_seq = None
+        for call_seq in all_call_seqs:
+            keys_in_seq = [obj.key for obj in call_seq]
+            if target_key in keys_in_seq:
+                found_seq = call_seq
+                break
+        return found_seq
+
+    def get_call_sequence_by_entrypoint(self, entrypoint: Playbook|Role|TaskFile, follow_include: bool=True):
+        call_tree = self.get_call_tree_by_entrypoint(entrypoint=entrypoint, follow_include=follow_include)
+        call_seq = self.call_graph2sequence(call_tree)
+        return call_seq
+
+    def get_call_tree_by_entrypoint(self, entrypoint: Playbook|Role|TaskFile, follow_include: bool=True):
+        return self._get_call_graph(obj=entrypoint, follow_include=follow_include)
+
+    def call_graph2sequence(self, call_graph: list=[]):
+        if not call_graph:
+            return []
+        call_seq = [call_graph[0][0]]
+        for (_, c_obj) in call_graph:
+            call_seq.append(c_obj)
+        return call_seq
+
+    # get call graph which starts from the specified object (e.g. playbook -> play -> task)
+    def _get_call_graph(self, obj: Object=None, key: str="", follow_include: bool=True):
+        if not obj and not key:
+            raise ValueError("either `obj` or `key` must be non-empty value")
+
+        if not obj and key:
+            obj = self.get_object(key)
+            if not obj:
+                raise ValueError(f"No object found for key `{key}`")
+
+        history = []
+        return self._recursive_get_call_graph(obj=obj, history=history, follow_include=follow_include)
+
+
+    def _get_children_keys_for_graph(self, obj, follow_include: bool=True):
+        if isinstance(obj, Playbook):
+            return obj.plays
+        elif isinstance(obj, Role):
+            # TODO: support role invokation for non main.yml
+            target_filenames = ["main.yml", "main.yaml"]
+            def get_filename(tf_key):
+                return tf_key.split(key_delimiter)[-1].split("/")[-1]
+            taskfile_key = [
+                tf_key
+                for tf_key in obj.taskfiles if get_filename(tf_key) in target_filenames
+            ]
+            return taskfile_key
+        elif isinstance(obj, Play):
+            roles = []
+            if follow_include:
+                if obj.roles:
+                    for rip in obj.roles:
+
+                        role_key = rip.role_info.get("key", None)
+                        if role_key:
+                            roles.append(role_key)
+            return obj.pre_tasks + obj.tasks + roles + obj.post_tasks
+        elif isinstance(obj, TaskFile):
+            return obj.tasks
+        elif isinstance(obj, Task):
+            if follow_include:
+                if obj.include_info:
+                    c_key = obj.include_info.get("key", None)
+                    if c_key:
+                        return [c_key]
+
+        return []
+
+    def _recursive_get_call_graph(self, obj, history=None, follow_include: bool=True):
+        if not history:
+            history = []
+
+        obj_key = obj.key
+        if obj_key in history:
+            return []
+
+        _history = [h for h in history]
+        _history.append(obj_key)
+
+        call_graph = []
+        children_keys = self._get_children_keys_for_graph(obj=obj, follow_include=follow_include)
+        if children_keys:
+            for c_key in children_keys:
+                c_obj = self.get_object(c_key)
+                if not c_obj:
+                    # logger.warn(f"No object found for key `{c_key}`; skip this node")
+                    continue
+                call_graph.append((obj, c_obj))
+                sub_graph = self._recursive_get_call_graph(obj=c_obj, history=_history, follow_include=follow_include)
+                if sub_graph:
+                    call_graph.extend(sub_graph)
+        return call_graph
+
+    def metadata(self):
+        objects = {}
+        for attr in attr_list:
+            objects_per_type = getattr(self, attr, [])
+            if attr == "files":
+                objects["files"] = len(self.file_inventory)
+                objects["loaded_files"] = len(objects_per_type)
+                objects["ignored_files"] = objects["files"] - objects["loaded_files"]
+            else:
+                objects[attr] = len(objects_per_type)
+        return {
+            "source": self.source,
+            "source_id": self.source_id,
+            "objects": objects,
+            "path": self.path,
+            "scan_timestamp": self.scan_timestamp,
+            "scan_time_detail": self.scan_time_detail,
+            "dir_size": self.dir_size,
+            "scanner_version": self.scanner_version,
+            "file_inventory": self.file_inventory,
+            "scan_metadata": self.scan_metadata,
+            "dependencies": self.dependencies,
+        }
+
+    def objects(self):
+        _objects = []
+        for attr in attr_list:
+            objects_per_type = getattr(self, attr, [])
+            _objects.extend(objects_per_type)
+        return _objects

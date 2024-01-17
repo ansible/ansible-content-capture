@@ -15,12 +15,14 @@
 # limitations under the License.
 
 import os
+import time
 import sys
 import json
 import yaml
 import tempfile
 import jsonpickle
 import datetime
+import traceback
 from dataclasses import dataclass, field
 
 from .models import (
@@ -29,9 +31,11 @@ from .models import (
     LoadType,
     ObjectList,
     TaskCallsInTree,
+    InputData,
+    ScanResult,
 )
 from .loader import (
-    get_loader_version,
+    get_scanner_version,
 )
 from .parser import Parser
 from .model_loader import load_object
@@ -55,6 +59,11 @@ from .utils import (
     split_target_playbook_fullpath,
     split_target_taskfile_fullpath,
     equal,
+    get_dir_size,
+    get_yml_list,
+    create_scan_list,
+    is_skip_file_obj,
+    label_yml_file,
 )
 
 
@@ -127,7 +136,7 @@ logger.set_log_level(config.log_level)
 
 
 @dataclass
-class SingleScan(object):
+class ScanData(object):
     type: str = ""
     name: str = ""
     collection_name: str = ""
@@ -391,7 +400,7 @@ class SingleScan(object):
 
     def create_load_file(self, target_type, target_name, target_path):
 
-        loader_version = get_loader_version()
+        loader_version = get_scanner_version()
 
         if not os.path.exists(target_path) and not self.playbook_yaml and not self.taskfile_yaml:
             raise ValueError("No such file or directory: {}".format(target_path))
@@ -702,7 +711,9 @@ class AnsibleScanner(object):
     silent: bool = True
     output_format: str = ""
 
-    _current: SingleScan = None
+    scan_records: dict = field(default_factory=dict)
+
+    _current: ScanData = None
 
     def __post_init__(self):
         if not self.config:
@@ -752,6 +763,7 @@ class AnsibleScanner(object):
         objects: bool = False,
         out_dir: str = "",
         spec_mutations_from_previous_scan: dict = None,
+        **kwargs,
     ):
         time_records = {}
         self.record_begin(time_records, "scandata_init")
@@ -768,7 +780,7 @@ class AnsibleScanner(object):
         if is_local_path(name) and not playbook_yaml and not taskfile_yaml:
             name = os.path.abspath(name)
 
-        scandata = SingleScan(
+        scandata = ScanData(
             type=type,
             name=name,
             collection_name=collection_name,
@@ -1056,6 +1068,502 @@ class AnsibleScanner(object):
 
         return scandata
 
+    def _single_scan(self, input_data, file_inventory, include_tests, out_base_dir, save_objects):
+        if not isinstance(input_data, InputData):
+            raise ValueError(f"input data must be InputData type, but {type(input_data)}")
+
+        i = input_data.index
+        num = input_data.total_num
+        _type = input_data.type
+        name = input_data.name
+        path = input_data.path
+        raw_yaml = input_data.yaml
+        original_type = input_data.metadata.get("original_type", _type)
+        base_dir = input_data.metadata.get("base_dir", None)
+        kwargs = {
+            "type": _type,
+        }
+        if path:
+            kwargs["name"] = path
+        if raw_yaml:
+            kwargs["raw_yaml"] = raw_yaml
+
+        source = self.scan_records.get("source", {})
+        display_name = name
+        if base_dir and name.startswith(base_dir):
+            display_name = name.replace(base_dir, "", 1)
+            if display_name and display_name[-1] == "/":
+                display_name = display_name[:-1]
+
+        yaml_label_list = []
+        if file_inventory:
+            for file_info in file_inventory:
+                if not isinstance(file_info, dict):
+                    continue
+                is_yml = file_info.get("is_yml", False)
+                if not is_yml:
+                    continue
+                fpath = file_info.get("path_from_root", "")
+                label = file_info.get("label", "")
+                role_info = file_info.get("role_info", {})
+                if not fpath or not label:
+                    continue
+                yaml_label_list.append((fpath, label, role_info))
+
+        start_of_this_scan = time.time()
+        if not self.silent:
+            logger.debug(f"[{i+1}/{num}] start {_type} {display_name}")
+        use_src_cache = True
+
+        taskfile_only = False
+        playbook_only = False
+        out_dir_basename = name
+        if _type != "role" and _type != "project":
+            taskfile_only = True
+            playbook_only = True
+            out_dir_basename = escape_local_path(name)
+
+        scandata = None
+        try:
+            out_dir = ""
+            if out_base_dir:
+                out_dir = os.path.join(out_base_dir, _type, out_dir_basename)
+            objects_option = False
+            if save_objects and out_dir:
+                objects_option = True
+            begin = time.time()
+            scandata = self.evaluate(
+                **kwargs,
+                install_dependencies=True,
+                include_test_contents=include_tests,
+                objects=objects_option,
+                out_dir=out_dir,
+                load_all_taskfiles=True,
+                use_src_cache=use_src_cache,
+                taskfile_only=taskfile_only,
+                playbook_only=playbook_only,
+                base_dir=base_dir,
+                yaml_label_list=yaml_label_list,
+            )
+            elapsed = time.time() - begin
+        except Exception:
+            error = traceback.format_exc()
+            if error:
+                if not self.silent:
+                    logger.error(f"Failed to scan {path} in {name}: error detail: {error}")
+
+        if scandata:
+            all_scanned_files = get_all_files_from_scandata(scandata, path)
+            task_scanned_files = [fpath for fpath, scan_type in all_scanned_files if scan_type == "task"]
+            play_scanned_files = [fpath for fpath, scan_type in all_scanned_files if scan_type == "play"]
+            file_scanned_files = [fpath for fpath, scan_type in all_scanned_files if scan_type == "file"]
+            if original_type == "project":
+                if name in self.scan_records["project_file_list"]:
+                    files_num = len(self.scan_records["project_file_list"][name]["files"])
+                    for j in range(files_num):
+                        fpath = self.scan_records["project_file_list"][name]["files"][j]["filepath"]
+                        if fpath in task_scanned_files:
+                            self.scan_records["project_file_list"][name]["files"][j]["task_scanned"] = True
+                            self.scan_records["project_file_list"][name]["files"][j]["scanned_as"] = _type
+                            self.scan_records["project_file_list"][name]["files"][j]["loaded"] = True
+                        elif fpath in play_scanned_files:
+                            self.scan_records["project_file_list"][name]["files"][j]["scanned_as"] = _type
+                            self.scan_records["project_file_list"][name]["files"][j]["loaded"] = True
+                            self.scan_records["non_task_scanned_files"].append(fpath)
+                        elif fpath in file_scanned_files:
+                            self.scan_records["project_file_list"][name]["files"][j]["scanned_as"] = _type
+                            self.scan_records["project_file_list"][name]["files"][j]["loaded"] = True
+
+            elif original_type == "role":
+                if name in self.scan_records["role_file_list"]:
+                    files_num = len(self.scan_records["role_file_list"][name]["files"])
+                    for j in range(files_num):
+                        fpath = self.scan_records["role_file_list"][name]["files"][j]["filepath"]
+                        if fpath in task_scanned_files:
+                            self.scan_records["role_file_list"][name]["files"][j]["task_scanned"] = True
+                            self.scan_records["role_file_list"][name]["files"][j]["scanned_as"] = _type
+                            self.scan_records["role_file_list"][name]["files"][j]["loaded"] = True
+                        elif fpath in play_scanned_files:
+                            self.scan_records["role_file_list"][name]["files"][j]["scanned_as"] = _type
+                            self.scan_records["role_file_list"][name]["files"][j]["loaded"] = True
+                            self.scan_records["non_task_scanned_files"].append(fpath)
+            else:
+                files_num = len(self.scan_records["independent_file_list"])
+                for j in range(files_num):
+                    fpath = self.scan_records["independent_file_list"][j]["filepath"]
+                    if fpath in task_scanned_files:
+                        self.scan_records["independent_file_list"][j]["task_scanned"] = True
+                        self.scan_records["independent_file_list"][j]["scanned_as"] = _type
+                        self.scan_records["independent_file_list"][j]["loaded"] = True
+                    elif fpath in play_scanned_files:
+                        self.scan_records["independent_file_list"][j]["scanned_as"] = _type
+                        self.scan_records["independent_file_list"][j]["loaded"] = True
+                        self.scan_records["non_task_scanned_files"].append(fpath)
+
+            findings = scandata.findings
+            self.scan_records["findings"].append({"target_type": _type, "target_name": name, "findings": findings})
+
+            trees = scandata.trees
+            annotation_dict = {}
+            skip_annotation_keys = [
+                "",
+                "module.available_args",
+                "variable.unnecessary_loop_vars",
+            ]
+            for _tree in trees:
+                for call_obj in _tree.items:
+                    if not hasattr(call_obj, "annotations"):
+                        continue
+                    orig_annotations = call_obj.annotations
+                    annotations = {anno.key: anno.value for anno in orig_annotations if isinstance(anno.key, str) and anno.key not in skip_annotation_keys}
+                    spec_key = call_obj.spec.key
+                    if annotations:
+                        annotation_dict[spec_key] = annotations
+
+            objects = {}
+            tasks = []
+            plays = []
+            if findings and findings.root_definitions:
+                objects = findings.root_definitions.get("definitions", {})
+                tasks = objects["tasks"]
+                plays = objects["plays"]
+
+            added_obj_keys = []
+            for obj_type in objects:
+                objects_per_type = objects[obj_type]
+                for obj in objects_per_type:
+
+                    # filter files to avoid too many files in objects
+                    if obj_type == "files":
+                        if is_skip_file_obj(obj, tasks, plays):
+                            self.scan_records["ignored_files"].append(obj.defined_in)
+                            continue
+
+                    spec_key = obj.key
+                    if spec_key in added_obj_keys:
+                        continue
+
+                    # TODO: determine whether to use VarCont
+                    # obj = set_vc(obj)
+
+                    if spec_key in annotation_dict:
+                        obj.annotations = annotation_dict[spec_key]
+                    self.scan_records["objects"].append(obj)
+                    added_obj_keys.append(spec_key)
+
+            self.scan_records["time"].append({"target_type": _type, "target_name": name, "scan_seconds": elapsed})
+
+            if findings and _type == "project":
+                metadata = findings.metadata.copy()
+                metadata.pop("time_records")
+                metadata["scan_timestamp"] = datetime.datetime.utcnow().isoformat(timespec="seconds")
+                metadata["pipeline_version"] = get_scanner_version()
+                self.scan_records["metadata"] = metadata
+
+                scan_metadata = findings.metadata.copy()
+                dependencies = findings.dependencies.copy()
+                scan_metadata["source"] = source
+                self.scan_records["scan_metadata"] = scan_metadata
+                self.scan_records["dependencies"] = dependencies
+
+        elapsed_for_this_scan = round(time.time() - start_of_this_scan, 2)
+        if elapsed_for_this_scan > 60:
+            if not self.silent:
+                logger.warning(f"It took {elapsed_for_this_scan} sec. to process [{i+1}/{num}] {_type} {name}")
+
+        return
+
+    def run(self, target_dir: str="", raw_yaml: str="", **kwargs):
+        self._init_scan_records()
+
+        kwargs["target_dir"] = target_dir
+        kwargs["raw_yaml"] = raw_yaml
+
+        # source = kwargs.get("source", {})
+
+        input_list_arg_keys = ["target_dir", "raw_yaml", "label", "filepath"]
+        input_list_args = {k: v for k, v in kwargs.items() if k in input_list_arg_keys}
+        input_list = self.create_input_list(**input_list_args)
+
+        include_tests = kwargs.get("include_tests", False)
+        out_base_dir = kwargs.get("out_base_dir", None)
+        save_objects = kwargs.get("save_objects", False)
+
+        file_inventory = self.create_file_inventory()
+
+        for input_data in input_list:
+            self._single_scan(
+                input_data=input_data,
+                file_inventory=file_inventory,
+                include_tests=include_tests,
+                out_base_dir=out_base_dir,
+                save_objects=save_objects,
+            )
+
+        # make a list of missing files from the first scan
+        missing_files = []
+        for project_name in self.scan_records["project_file_list"]:
+            base_dir = os.path.abspath(self.scan_records["project_file_list"][project_name]["path"])
+            for file in self.scan_records["project_file_list"][project_name]["files"]:
+                label = file.get("label", "")
+                filepath = file.get("filepath", "")
+                task_scanned = file.get("task_scanned", False)
+                role_info = file.get("role_info", {})
+                non_task_scanned = True if filepath in self.scan_records["non_task_scanned_files"] else False
+                if not task_scanned and not non_task_scanned and label in ["playbook", "taskfile"]:
+                    if role_info and role_info.get("is_external_dependency", False):
+                        continue
+                    _type = label
+                    _name = filepath
+                    missing_files.append((_type, _name, filepath, base_dir, "project"))
+
+        for role_name in self.scan_records["role_file_list"]:
+            base_dir = os.path.abspath(self.scan_records["role_file_list"][role_name]["path"])
+            for file in self.scan_records["role_file_list"][role_name]["files"]:
+                label = file.get("label", "")
+                filepath = file.get("filepath", "")
+                task_scanned = file.get("task_scanned", False)
+                role_info = file.get("role_info", {})
+                non_task_scanned = True if filepath in self.scan_records["non_task_scanned_files"] else False
+                if not task_scanned and not non_task_scanned and label in ["playbook", "taskfile"]:
+                    if role_info and role_info.get("is_external_dependency", False):
+                        continue
+                    _type = label
+                    _name = filepath
+                    missing_files.append((_type, _name, filepath, base_dir, "role"))
+
+        self.scan_records["missing_files"] = missing_files
+        num_of_missing = len(missing_files)
+        second_input_list = [
+            InputData(
+                index=i,
+                total_num=num_of_missing,
+                type=_type,
+                name=_name,
+                path=filepath,
+                metadata={"original_type": original_type, "base_dir": base_dir}
+            )
+            for i, (_type, _name, filepath, base_dir, original_type) in enumerate(missing_files)
+        ]
+        for input_data in second_input_list:
+            self._single_scan(
+                input_data=input_data,
+                file_inventory=file_inventory,
+                include_tests=include_tests,
+                out_base_dir=out_base_dir,
+                save_objects=save_objects,
+            )
+
+        file_inventory = self.create_file_inventory()
+
+        result = self.create_scan_result()
+
+        self._clear_scan_records()
+        return result
+
+
+    def create_input_list(self, target_dir="", raw_yaml="", label="", filepath=""):
+        # single yaml scan
+        if raw_yaml:
+            if not label:
+                label, _, error = label_yml_file(yml_body=raw_yaml)
+                if error:
+                    raise ValueError(f"failed to detect the input YAML type: {error}")
+            if label not in ["playbook", "taskfile"]:
+                raise ValueError(f"playbook and taskfile are the only supported types, but the input file is `{label}`")
+            input_data = InputData(
+                index=0,
+                total_num=1,
+                yaml=raw_yaml,
+                path=filepath,
+                type=label,
+            )
+            input_list = [input_data]
+
+        elif target_dir:
+
+            # otherwise, create input_list for multi-stage scan
+            dir_size = get_dir_size(target_dir)
+            path_list = get_yml_list(target_dir)
+
+            project_file_list, role_file_list, independent_file_list, non_yaml_file_list = create_scan_list(path_list)
+            self.scan_records["project_file_list"] = project_file_list
+            self.scan_records["role_file_list"] = role_file_list
+            self.scan_records["independent_file_list"] = independent_file_list
+            self.scan_records["non_yaml_file_list"] = non_yaml_file_list
+            self.scan_records["non_task_scanned_files"] = []
+            self.scan_records["findings"] = []
+            self.scan_records["metadata"] = {}
+            self.scan_records["time"] = []
+            self.scan_records["size"] = dir_size
+            self.scan_records["objects"] = []
+            self.scan_records["ignored_files"] = []
+
+            input_list = []
+
+            i = 0
+            num = len(project_file_list) + len(role_file_list) + len(independent_file_list)
+            for project_name in project_file_list:
+                project_path = project_file_list[project_name].get("path")
+                input_list.append(InputData(
+                    index=i,
+                    total_num=num,
+                    type="project",
+                    name=project_name,
+                    path=project_path,
+                    metadata={
+                        "base_dir": project_path,
+                    }
+                ))
+                i += 1
+
+            for role_name in role_file_list:
+                _type = "role"
+                _name = role_name
+                role_path = role_file_list[role_name].get("path")
+                input_list.append(InputData(
+                    index=i,
+                    total_num=num,
+                    type="role",
+                    name=role_name,
+                    path=role_path,
+                    metadata={
+                        "base_dir": role_path,
+                    }
+                ))
+                i += 1
+
+            for file in independent_file_list:
+                _name = file.get("filepath")
+                filepath = _name
+                _type = file.get("label")
+                if _type in ["playbook", "taskfile"]:
+                    input_list.append(InputData(
+                    index=i,
+                    total_num=num,
+                    type=_type,
+                    name=_name,
+                    path=filepath,
+                    metadata={
+                        "base_dir": target_dir,
+                    }
+                ))
+                i += 1
+        else:
+            raise ValueError("Either `target_dir` or `raw_yaml` are required to create input_list")
+        return input_list
+
+    def create_file_inventory(self):
+        file_inventory = []
+        for project_name in self.scan_records["project_file_list"]:
+            for file in self.scan_records["project_file_list"][project_name]["files"]:
+                task_scanned = file.get("task_scanned", False)
+                file["task_scanned"] = task_scanned
+                scanned_as = file.get("scanned_as", "")
+                file["scanned_as"] = scanned_as
+                loaded = file.get("loaded", False)
+                # we intentionally remove some files by is_skip_file_obj() in the current implementation
+                # so set loaded=False here in that case
+                if loaded:
+                    in_proj_path = file.get("path_from_root", "")
+                    if in_proj_path and in_proj_path in self.scan_records["ignored_files"]:
+                        loaded = False
+                file["loaded"] = loaded
+                file_inventory.append(file)
+
+        for role_name in self.scan_records["role_file_list"]:
+            for file in self.scan_records["role_file_list"][role_name]["files"]:
+                task_scanned = file.get("task_scanned", False)
+                file["task_scanned"] = task_scanned
+                scanned_as = file.get("scanned_as", "")
+                file["scanned_as"] = scanned_as
+                loaded = file.get("loaded", False)
+                # we intentionally remove some files by is_skip_file_obj() in the current implementation
+                # so set loaded=False here in that case
+                if loaded:
+                    in_proj_path = file.get("path_from_root", "")
+                    if in_proj_path and in_proj_path in self.scan_records["ignored_files"]:
+                        loaded = False
+                file["loaded"] = loaded
+                file_inventory.append(file)
+
+        for file in self.scan_records["independent_file_list"]:
+            task_scanned = file.get("task_scanned", False)
+            file["task_scanned"] = task_scanned
+            scanned_as = file.get("scanned_as", "")
+            file["scanned_as"] = scanned_as
+            loaded = file.get("loaded", False)
+            # we intentionally remove some files by is_skip_file_obj() in the current implementation
+            # so set loaded=False here in that case
+            if loaded:
+                in_proj_path = file.get("path_from_root", "")
+                if in_proj_path and in_proj_path in self.scan_records["ignored_files"]:
+                    loaded = False
+            file["loaded"] = loaded
+            file_inventory.append(file)
+
+        for file in self.scan_records["non_yaml_file_list"]:
+            task_scanned = file.get("task_scanned", False)
+            file["task_scanned"] = task_scanned
+            scanned_as = file.get("scanned_as", "")
+            file["scanned_as"] = scanned_as
+            loaded = file.get("loaded", False)
+            # we intentionally remove some files by is_skip_file_obj() in the current implementation
+            # so set loaded=False here in that case
+            if loaded:
+                in_proj_path = file.get("path_from_root", "")
+                if in_proj_path and in_proj_path in self.scan_records["ignored_files"]:
+                    loaded = False
+            file["loaded"] = loaded
+            file_inventory.append(file)
+
+        return file_inventory
+
+    def create_scan_result(self):
+        if not self.scan_records:
+            return
+        source = self.scan_records.get("source", {})
+        file_inventory = self.file_inventory
+        objects = self.scan_records.get("objects", [])
+        metadata = self.scan_records.get("metadata", {})
+        scan_time = self.scan_records.get("time", [])
+        dir_size = self.scan_records.get("size", 0)
+        scan_metadata = self.scan_records.get("scan_metadata", {})
+        dependencies = self.scan_records.get("dependencies", [])
+        proj = ScanResult.from_source_objects(
+            source=source,
+            file_inventory=file_inventory,
+            objects=objects,
+            metadata=metadata,
+            scan_time=scan_time,
+            dir_size=dir_size,
+            scan_metadata=scan_metadata,
+            dependencies=dependencies,
+        )
+        return proj
+
+    def _init_scan_records(self):
+        self.scan_records = {
+            "project_file_list": {},
+            "role_file_list": {},
+            "independent_file_list": [],
+            "non_yaml_file_list": [],
+            "non_task_scanned_files": [],
+            "findings": [],
+            "metadata": {},
+            "time": [],
+            "size": 0,
+            "objects": [],
+            "ignored_files": [],
+            "begin": time.time(),
+        }
+        self.file_inventory = []
+        return
+
+    def _clear_scan_records(self):
+        self.scan_records = {}
+        return
+
     def load_metadata_from_kb(self, type, name, version):
         loaded, metadata, dependencies = self.kb_client.load_metadata_from_findings(type, name, version)
         return loaded, metadata, dependencies
@@ -1146,6 +1654,31 @@ def resolve(trees, additional):
         )
         taskcalls_in_trees.append(d)
     return taskcalls_in_trees
+
+
+def get_all_files_from_scandata(scandata, scan_root_dir):
+    
+    task_specs = scandata.root_definitions.get("definitions", {}).get("tasks", [])
+    all_files = []
+    for task_spec in task_specs:
+        fullpath = os.path.join(scan_root_dir, task_spec.defined_in)
+        if fullpath not in all_files:
+            all_files.append((fullpath, "task"))
+
+    # some plays have only `roles` instead of `tasks`
+    # count this type of playbook files here
+    play_specs = scandata.root_definitions.get("definitions", {}).get("plays", [])
+    for play_spec in play_specs:
+        fullpath = os.path.join(scan_root_dir, play_spec.defined_in)
+        if fullpath not in all_files:
+            all_files.append((fullpath, "play"))
+
+    file_specs = scandata.root_definitions.get("definitions", {}).get("files", [])
+    for file_spec in file_specs:
+        fullpath = os.path.join(scan_root_dir, file_spec.defined_in)
+        if fullpath not in all_files:
+            all_files.append((fullpath, "file"))
+    return all_files
 
 
 if __name__ == "__main__":

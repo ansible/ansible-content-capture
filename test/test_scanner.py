@@ -21,7 +21,7 @@ from ansible_scan_core.scanner import AnsibleScanner
 scanner = AnsibleScanner()
 
 
-def test_scan_yaml():
+def test_evaluate_yaml():
     target_yaml = """
 ---
 - hosts: localhost
@@ -66,7 +66,7 @@ def test_scan_yaml():
     assert(undefined_var == "additional_comment")
 
 
-def test_scan_collection():
+def test_evaluate_collection():
     target_path = os.path.join(os.path.dirname(__file__), "testdata/sample_collection/ansible_collections/kubernetes/core")
     scandata = scanner.evaluate(
         type="collection",
@@ -89,7 +89,7 @@ def test_scan_collection():
     assert("tests/integration/targets/setup_namespace/tasks/main.yml" in taskfile_path_list)
 
 
-def test_scan_role():
+def test_evaluate_role():
     target_path = os.path.join(os.path.dirname(__file__), "testdata/sample_role/geerlingguy.docker")
     scandata = scanner.evaluate(
         type="role",
@@ -105,3 +105,43 @@ def test_scan_role():
     taskfile_path_list = [tf.filepath for tf in taskfiles]
     assert("tasks/setup-Debian.yml" in taskfile_path_list)
     assert("tasks/docker-users.yml" in taskfile_path_list)
+
+
+def test_scan_yaml():
+    target_yaml = """
+---
+- hosts: localhost
+  vars:
+    name: "John"
+  tasks:
+    - name: Greetings
+      debug:
+        msg: "Hello, {{ name }}!  {{ additional_comment }}"
+        abc: def
+"""
+    scan_result = scanner.run(
+        raw_yaml=target_yaml,
+    )
+    assert(scan_result)
+    assert(scan_result.tasks)
+    assert(len(scan_result.tasks) == 1)
+    task = scan_result.tasks[0]
+    assert(task.name == "Greetings")
+
+
+def test_scan_collection():
+    target_path = os.path.join(os.path.dirname(__file__), "testdata/sample_collection/ansible_collections/kubernetes/core")
+    scan_result = scanner.run(
+        target_dir=target_path,
+    )
+    # check result data structure
+    assert(scan_result)
+    assert(scan_result.modules)
+    modules = scan_result.modules
+    assert(modules)
+    assert(len(modules) == 23)
+    taskfiles = scan_result.taskfiles
+    assert(taskfiles)
+    taskfile_path_list = [tf.filepath for tf in taskfiles]
+    assert("tests/integration/targets/helm/tasks/main.yml" in taskfile_path_list)
+    assert("tests/integration/targets/setup_namespace/tasks/main.yml" in taskfile_path_list)
