@@ -333,7 +333,7 @@ class Annotatable(JSONSerializable):
         matched = [an for an in self.annotations if hasattr(an, "type") and an.type == type_str and getattr(an, key, None) == val]
         return matched
 
-    def set_annotation(self, key: str, value: any):
+    def set_annotation(self, key: str, value: any, **kwargs):
         end_to_set = False
         for an in self.annotations:
             if not hasattr(an, "key"):
@@ -346,7 +346,7 @@ class Annotatable(JSONSerializable):
             self.annotations.append(Annotation(key=key, value=value))
         return
 
-    def get_annotation(self, key: str, __default: any = None):
+    def get_annotation(self, key: str, __default: any = None, **kwargs):
         value = __default
         for an in self.annotations:
             if not hasattr(an, "key"):
