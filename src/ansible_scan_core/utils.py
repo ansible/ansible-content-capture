@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import os
+import re
 import traceback
 import subprocess
 import requests
@@ -34,6 +35,14 @@ from ansible_scan_core.finder import (
     get_project_info_for_file,
 )
 import ansible_scan_core.logger as logger
+
+
+variable_block_re = re.compile(r"{{[^}]+}}")
+
+magic_vars = []
+vars_file = os.getenv("VARS_FILE", os.path.join(os.path.dirname(__file__),"ansible_variables.txt"))
+with open(vars_file, "r") as f:
+    magic_vars = f.read().splitlines()
 
 
 def lock_file(fpath, timeout=10):
@@ -788,3 +797,285 @@ def is_skip_file_obj(obj, tasks=[], plays=[]):
                 return False
 
     return  True
+
+
+def flatten_dict_list(d, parent_key='', sep='.'):
+    items = {}
+    if d is None:
+        return items
+    if isinstance(d, list):
+        for i, v in enumerate(d):
+            items[i] = v
+        return items
+    elif isinstance(d, dict):
+        for key, value in d.items():
+            new_key = f"{parent_key}{sep}{key}" if parent_key else key
+            if isinstance(value, dict):
+                items.update(flatten_dict_list(value, new_key, sep=sep))
+            elif isinstance(value, list):
+                for v in value:
+                    list_new_key = f"{new_key}[{value.index(v)}]"
+                    if isinstance(v, dict):
+                        items.update(flatten_dict_list(v, list_new_key, sep=sep))
+                    else:
+                        items[list_new_key] = v
+            else:
+                items[new_key] = value
+    else:
+        items["value"] = d
+        return items
+    return items
+
+
+def flatten_dict(d, parent_key='', sep='.'):
+    items = {}
+    if isinstance(d, str):
+        items["value"] = d
+        return items
+    if isinstance(d, list):
+        for i, v in enumerate(d):
+            items[i] = v
+        return items
+    for key, value in d.items():
+        new_key = f"{parent_key}{sep}{key}" if parent_key else key
+        if isinstance(value, dict):
+            # add current key and value
+            items[key] = value
+            # handle child dict
+            items.update(flatten_dict(value, new_key, sep=sep))
+        else:
+            items[new_key] = value
+    return items
+
+
+# return var names
+def extract_var_parts(options: dict|str):
+    vars_in_option = {}
+    if isinstance(options, str):
+        if "{{" in options:
+            vars = extract_variable_names(options)
+            for v in vars:
+                vars_in_option[v["name"]] = v
+    elif isinstance(options, dict):
+        for _, ov in options.items():
+            if not isinstance(ov, str):
+                continue
+            if "{{" in ov:
+                vars = extract_variable_names(ov)
+                for v in vars:
+                    vars_in_option[v["name"]] = v
+    return vars_in_option
+
+
+def extract_variable_names(txt):
+    if not variable_block_re.search(txt):
+        return []
+    found_var_blocks = variable_block_re.findall(txt)
+    blocks = []
+    for b in found_var_blocks:
+        if "lookup(" in b.replace(" ", ""):
+            continue
+        parts = b.split("|")
+        var_name = ""
+        default_var_name = ""
+        for i, p in enumerate(parts):
+            if i == 0:
+                var_name = p.replace("{{", "").replace("}}", "")
+                if " if " in var_name and " else " in var_name:
+                    # this block is not just a variable, but an expression
+                    # we need to split this with a space to get its elements
+                    skip_elements = ["if", "else", "+", "is", "defined"]
+                    sub_parts = var_name.split(" ")
+                    for sp in sub_parts:
+                        if not sp:
+                            continue
+                        if sp and sp in skip_elements:
+                            continue
+                        if sp and sp[0] in ['"', "'"]:
+                            continue
+                        var_name = sp
+                        break
+                var_name = var_name.replace(" ", "")
+                if "lookup(" in var_name and "first_found" in var_name:
+                    var_name = var_name.split(",")[-1].replace(")", "")
+                if var_name and var_name[0] == "(":
+                    var_name = var_name.split(")")[0].replace("(", "")
+                if "+" in var_name:
+                    sub_parts = var_name.split("+")
+                    for sp in sub_parts:
+                        if not sp:
+                            continue
+                        if sp and sp[0] in ['"', "'"]:
+                            continue
+                        var_name = sp
+                        break
+                if "[" in var_name and "." not in var_name:
+                    # extract dict/list name
+                    dict_pattern = r'(\w+)\[(\'|").*(\'|")\]'
+                    match = re.search(dict_pattern, var_name)
+                    if match:
+                        matched_str = match.group(1)
+                        var_name = matched_str.split("[")[0]
+                    list_pattern = r'(\w+)\[\-?\d+\]'
+                    match = re.search(list_pattern, var_name)
+                    if match:
+                        matched_str = match.group(1)
+                        var_name = matched_str.split("[")[0]
+            else:
+                if "default(" in p and ")" in p:
+                    default_var = p.replace("}}", "").replace("default(", "").replace(")", "").replace(" ", "")
+                    if not default_var.startswith('"') and not default_var.startswith("'") and not re.compile(r"[0-9].*").match(default_var):
+                        default_var_name = default_var
+        tmp_b = {
+            "original": b,
+        }
+        if var_name == "":
+            continue
+        tmp_b["name"] = var_name
+        if default_var_name != "":
+            tmp_b["default"] = default_var_name
+        blocks.append(tmp_b)
+    return blocks
+
+
+
+# return used vars in when option
+def check_when_option(options):
+    used_vars = {}
+    if "when" not in options and "failed_when" not in options:
+        return used_vars
+    when_value = options.get("when", "")
+    failed_when_value = options.get("failed_when", "")
+    all_values = []
+    if isinstance(when_value, list):
+        all_values.extend(when_value)
+
+    elif isinstance(when_value, dict):
+        for v in when_value.values():
+            all_values.append(v)
+    else:
+        all_values.append(when_value)
+
+    _used_vars = extract_when_option_var_name(all_values)
+    used_vars |= _used_vars
+
+    all_values = []
+    if isinstance(failed_when_value, list):
+        all_values.extend(failed_when_value)
+    elif isinstance(failed_when_value, dict):
+        for v in failed_when_value.values():
+            all_values.append(v)
+    else:
+        all_values.append(failed_when_value)
+        # all_values = re.split('[ |]', f"{failed_when_value}")
+    _used_vars = extract_when_option_var_name(all_values, is_failed_when=True)
+    used_vars |= _used_vars
+    return used_vars
+
+
+def extract_when_option_var_name(option_parts, is_failed_when=False):
+    option_parts = _split_values(option_parts)
+    used_vars = {}
+    ignore_words = ["defined", "undefined", "is", "not", "and", "or", "|", "in", "none", "+", "vars"]
+    boolean_vars = ["True", "true", "t", "yes", 'y', 'on', "False", "false", 'f', 'no', 'n', 'off']
+    data_type_words = ["bool", "float", "int", "length", "string"]
+    for p in option_parts:
+        if "match(" in p or "default(" in p:
+            continue
+        p = p.replace(")","").replace("(","").replace("{", "").replace("}", "")
+        if not p:
+            continue
+        if "=" in p or "<" in p or ">" in p:
+            continue
+        if p in ignore_words:
+            continue
+        if p in boolean_vars:
+            continue
+        if p in data_type_words:
+            continue
+        if p.startswith('"') or p.startswith("'"):
+            continue
+        if p.startswith("[") or p.startswith("]"):
+            continue
+        if p.startswith("item"):
+            continue
+        if "[" in p:
+            # extract var part from dict format like "hostvars[inventory_hostname]"
+            all_parts = re.split('[\[]', f"{p}")
+            if "[" not in all_parts[0]:
+                p = all_parts[0]
+        p = p.replace("\"", "")
+        if is_num(p):
+            continue
+        if check_if_magic_vars(p):
+            continue
+        if is_failed_when:
+            used_vars[p] = {"original": p, "name": p, "in_failed_when": True}
+        else:
+            used_vars[p] = {"original": p, "name": p}
+    return used_vars
+
+
+def check_if_magic_vars(used_var):
+    if "." in used_var:
+        used_var = used_var.split(".")[0]
+    if used_var in magic_vars:
+        return True
+    if used_var.startswith("ansible_"):
+        return True
+    if used_var == "default(omit)" or used_var == "default(false)":
+        return True
+    return False
+
+
+def _split_values(all_values):
+    all_parts = []
+    for val in all_values:
+        # identify string enclosed in (") or (') to support the following case
+        # when: result.failed or 'Server API protected' not in result.content
+        double_quoted_strings = re.findall(r'"(.*?)"', f"{val}")
+        single_quoted_strings = re.findall(r"'(.*?)'", f"{val}")
+        for quoted_str in double_quoted_strings:
+            if quoted_str != "" and quoted_str != " ":
+                val = val.replace(quoted_str, " ")
+        for quoted_str in single_quoted_strings:
+            if quoted_str != '' and quoted_str != ' ':
+                val = val.replace(quoted_str, " ")
+        all_parts.extend(re.split('[ |]', f"{val}"))
+    return all_parts
+
+
+def is_num(s):
+    try:
+        float(s)
+    except ValueError:
+        return False
+    else:
+        return True
+
+
+# return the list of parent obj key
+def traverse_and_get_parents(node_key, call_tree, parent_nodes):
+    sibling = []
+    for parent, child in call_tree:
+        # sibling
+        key_parts = child.key.rsplit('#', 1)
+        p1 = key_parts[0]
+        p2 = key_parts[-1]
+        n_key_parts = node_key.rsplit('#', 1)
+        np1 = n_key_parts[0]
+        np2 = n_key_parts[-1]
+        if "task:" in p2 and "task:" in np2:
+            p2_num = int(p2.replace("task:[", "").replace("]", ""))
+            np2_num = int(np2.replace("task:[", "").replace("]", ""))
+            if p1 == np1 and p2_num < np2_num:
+                sibling.insert(0, child.key)
+    for parent, child in call_tree:
+        # parent
+        if child.key == node_key:
+            parent_nodes.extend(sibling)
+            parent_nodes.append(parent.key)
+            traverse_and_get_parents(parent.key, call_tree, parent_nodes)
+            break
+    # parent_nodes.reverse()
+    return parent_nodes

@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from dataclasses import dataclass, field
 from typing import List
 from tabulate import tabulate
@@ -41,6 +42,11 @@ from .keyutil import (
 )
 from .utils import (
     recursive_copy_dict,
+    flatten_dict_list,
+    flatten_dict,
+    extract_var_parts,
+    check_when_option,
+    traverse_and_get_parents,
 )
 
 
@@ -506,6 +512,182 @@ class RunTargetList(object):
 
     def __getitem__(self, i):
         return self.items[i]
+
+
+@dataclass
+class VariableContainer:
+    obj_key: str = ""
+    filepath: str = ""
+    used_vars: {} = field(default_factory=dict)
+    # set_vars: field(default_factory=dict)
+    set_scoped_vars: {} = field(default_factory=dict) # available in children
+    set_explicit_scoped_vars: {} = field(default_factory=dict) # available in children
+    set_local_vars: {} = field(default_factory=dict) # available in local
+
+    def accum(self, vc):
+        self.set_explicit_scoped_vars |= vc.set_explicit_scoped_vars
+        self.set_scoped_vars |= vc.set_scoped_vars
+        self.used_vars |= vc.used_vars
+        return
+
+    def get_used_vars(self):
+        return self.used_vars
+
+    def get_set_vars_in_obj(self):
+        set_vars = {}
+        set_vars |= self.set_explicit_scoped_vars
+        set_vars |= self.set_scoped_vars
+        set_vars |= self.set_local_vars
+        return set_vars
+
+    # generate VarCont from sage obj
+    @staticmethod
+    def from_obj(obj: Object):
+        vc = None
+        if isinstance(obj, Playbook):
+            vc = VariableContainer.from_playbook(obj)
+        elif isinstance(obj, Play):
+            vc = VariableContainer.from_play(obj)
+        elif isinstance(obj, Role):
+            vc = VariableContainer.from_role(obj)
+        elif isinstance(obj, TaskFile):
+            vc = VariableContainer.from_taskfile(obj)
+        elif isinstance(obj, Task):
+            vc = VariableContainer.from_task(obj)
+        return vc
+
+    @staticmethod
+    def from_playbook(playbook):
+        vc = VariableContainer()
+        vc.obj_key = playbook.key
+        return vc
+
+    @staticmethod
+    def from_play(play):
+        vc = VariableContainer()
+        vc.obj_key = play.key
+        vc.filepath = play.filepath
+        vars = flatten_dict(play.variables)
+        for name, val in vars.items():
+            if isinstance(val, str) and "{{" in val:
+                vc.set_scoped_vars[name] = val
+            else:
+                vc.set_explicit_scoped_vars[name] = val
+        return vc
+
+    @staticmethod
+    def from_role(role):
+        vc = VariableContainer()
+        vc.obj_key = role.key
+        vc.filepath = role.filepath
+        vc.set_explicit_scoped_vars |= role.default_variables
+        vc.set_explicit_scoped_vars |= role.variables
+        return vc
+
+    @staticmethod
+    def from_taskfile(taskfile):
+        vc = VariableContainer()
+        vc.obj_key = taskfile.key
+        vc.filepath = taskfile.filepath
+        vc.set_explicit_scoped_vars |= taskfile.variables
+        return vc
+
+    @staticmethod
+    def from_task(task):
+        vc = VariableContainer()
+        vc.obj_key = task.key
+        vc.filepath = task.filepath
+        vc.set_scoped_vars |= task.set_facts
+        vc.set_scoped_vars |= task.registered_variables
+        vc.set_local_vars |= task.variables
+        vc.set_local_vars |= task.loop
+        vc.used_vars = VariableContainer.find_used_vars_in_task(task)
+        return vc
+
+    # return VariableContainer dict per obj key
+    @staticmethod
+    def from_call_seq(call_seq):
+        vc_dict = {}
+        for obj in call_seq:
+            vc = VariableContainer.from_obj(obj)
+            if vc is not None:
+                vc_dict[vc.obj_key] = vc
+        return vc_dict
+
+
+    # return accum vc based on call tree
+    @staticmethod
+    def from_call_tree(call_tree, vc_dict, obj_key, obj_filepath):
+        parents=[]
+        parents = traverse_and_get_parents(obj_key, call_tree, parents)
+        parents.reverse()
+        accum_vc = VariableContainer()
+        for p in parents:
+            if p not in vc_dict:
+                continue
+            pvc = vc_dict[p]
+            if pvc.filepath != obj_filepath:
+                continue
+            accum_vc.accum(pvc)
+        return accum_vc
+
+    # return used vars in a task
+    @staticmethod
+    def find_used_vars_in_task(task):
+        name = task.name
+        options = task.options
+        module_options = task.module_options
+        flat_options = flatten_dict_list(options)
+        flat_module_options = flatten_dict_list(module_options)
+        vars_in_options = extract_var_parts(flat_options)
+        special_vars = check_when_option(options)
+        vars_in_module_options = extract_var_parts(flat_module_options)
+        vars_in_name = extract_var_parts(name)
+        all_used_vars = {}
+        all_used_vars |= vars_in_options
+        all_used_vars |= vars_in_module_options
+        all_used_vars |= special_vars
+        all_used_vars |= vars_in_name
+        return all_used_vars
+
+    # return all declared vars
+    @staticmethod
+    def find_all_set_vars(tree, check_point=None, parent_role=None):
+        call_tree = []
+        for i in range(len(tree.items)):
+            if i == len(tree.items) - 2:
+                break
+            call_tree.append((tree.items[i].spec, tree.items[i+1].spec))
+
+        if not call_tree:
+            return {}
+
+        call_seq = [edge[0] for edge in call_tree]
+        vc_dict = VariableContainer.from_call_seq(call_seq)
+
+        all_set_vars = {}
+        role_vars = {}
+        if not check_point:
+            check_point = call_tree[-1][1]
+
+        entrypoint = call_tree[0][0]
+        accum_vc = VariableContainer.from_call_tree(call_tree, vc_dict, check_point.key, entrypoint.filepath)
+        if isinstance(entrypoint, TaskFile):
+            if parent_role:
+                r_vc = VariableContainer.from_role(parent_role)
+                accum_vc.accum(r_vc)
+                role_vars |= r_vc.set_explicit_scoped_vars
+                role_vars |= r_vc.set_scoped_vars
+        all_set_vars |= accum_vc.set_explicit_scoped_vars
+        all_set_vars |= accum_vc.set_scoped_vars
+        return all_set_vars
+
+
+# set VariableContainer to the specified attribute in a sage obj
+def set_vc_to_obj(obj, attr: str = "variables"):
+    vc = VariableContainer.from_obj(obj)
+    setattr(obj, attr, vc)
+    return obj
 
 
 @dataclass
@@ -1816,6 +1998,8 @@ class ScanResult(object):
     tasks: list = field(default_factory=list)
     files: list = field(default_factory=list)
 
+    trees: list = field(default_factory=list)
+
     path: str = ""
     scan_timestamp: str = ""
     scan_time_detail: list = field(default_factory=list)
@@ -1832,6 +2016,7 @@ class ScanResult(object):
         source: dict,
         file_inventory: list,
         objects: list,
+        trees: list,
         metadata: dict,
         scan_time: list,
         dir_size: int,
@@ -1847,6 +2032,8 @@ class ScanResult(object):
 
         for obj in objects:
             proj.add_object(obj)
+
+        proj.trees = trees
 
         proj.path = metadata.get("name", "")
         proj.scan_timestamp = metadata.get("scan_timestamp", "")
@@ -2028,3 +2215,105 @@ class ScanResult(object):
             objects_per_type = getattr(self, attr, [])
             _objects.extend(objects_per_type)
         return _objects
+
+    # find all tasks defined in the specified playbook from SageProject
+    def get_tasks_in_playbook(self, playbook: Playbook):
+        play_keys = playbook.plays
+        tasks = []
+        for p_key in play_keys:
+            play = self.get_object(key=p_key)
+            if not play:
+                continue
+            p_tasks = self.get_tasks_in_play(play)
+            tasks.extend(p_tasks)
+        return tasks
+
+
+    # find all tasks defined in the specified play from SageProject
+    def get_tasks_in_play(self, play: Play):
+        task_keys = play.pre_tasks + play.tasks + play.post_tasks
+        tasks = []
+        for t_key in task_keys:
+            task = self.get_object(key=t_key)
+            if not task:
+                continue
+            tasks.append(task)
+        return tasks
+
+
+    # find all tasks defined in the specified taskfile from SageProject
+    def get_tasks_in_taskfile(self, taskfile: TaskFile):
+        task_keys = taskfile.tasks
+        tasks = []
+        for t_key in task_keys:
+            task = self.get_object(key=t_key)
+            if not task:
+                continue
+            tasks.append(task)
+        return tasks
+
+
+    # find all tasks defined in the specified playbook or taskfile from SageProject
+    def get_tasks_in_file(self, target: Playbook | TaskFile = None):
+        tasks = []
+        if isinstance(target, Playbook):
+            tasks = self.get_tasks_in_playbook(target)
+        elif isinstance(target, TaskFile):
+            tasks = self.get_tasks_in_taskfile(target)
+        return tasks
+
+
+    # find all tasks defined in the specified playbook or taskfile from SageProject
+    # if `root` is an object key, get the object from SageProject first
+    def get_tasks(self, root: str | Object):
+        root_obj = root
+        if isinstance(root, str):
+            root_obj = self.get_object(key=root)
+        return self.get_tasks_in_file(target=root_obj)
+
+
+    # find all plays defined in the specified playbook from SageProject
+    def get_plays(self, playbook: Playbook):
+        play_keys = playbook.plays
+        plays = []
+        for p_key in play_keys:
+            play = self.get_object(key=p_key)
+            if not play:
+                continue
+            if not isinstance(play, Play):
+                continue
+            plays.append(play)
+        return plays
+
+
+    # find all taskfiles in the speciifed role from SageProject
+    def get_taskfiles_in_role(self, role: Role):
+        taskfile_keys = role.taskfiles
+        taskfiles = []
+        for tf_key in taskfile_keys:
+            taskfile = self.get_object(key=tf_key)
+            if not taskfile:
+                continue
+            if not isinstance(taskfile, TaskFile):
+                continue
+            taskfiles.append(taskfile)
+        return taskfiles
+
+
+    # find main.yml or main.yaml in the specified role from SageProject
+    def get_main_taskfile_for_role(self, role: Role):
+        taskfiles = self.get_taskfiles_in_role(role)
+        for tf in taskfiles:
+            filename = os.path.basename(tf.filepath)
+            if filename in ["main.yml", "main.yaml"]:
+                return tf
+        return None
+
+
+    # find a parent role for the specified taskfile if it exists
+    def find_parent_role(self, taskfile: TaskFile):
+        for role in self.roles:
+            taskfile_keys = role.taskfiles
+            if taskfile.key in taskfile_keys:
+                return role
+        return None

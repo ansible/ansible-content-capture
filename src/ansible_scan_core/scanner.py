@@ -1204,6 +1204,9 @@ class AnsibleScanner(object):
             self.scan_records["findings"].append({"target_type": _type, "target_name": name, "findings": findings})
 
             trees = scandata.trees
+            if trees:
+                self.scan_records["trees"].extend(trees)
+
             annotation_dict = {}
             skip_annotation_keys = [
                 "",
@@ -1397,6 +1400,7 @@ class AnsibleScanner(object):
             self.scan_records["time"] = []
             self.scan_records["size"] = dir_size
             self.scan_records["objects"] = []
+            self.scan_records["trees"] = []
             self.scan_records["ignored_files"] = []
 
             input_list = []
@@ -1525,6 +1529,7 @@ class AnsibleScanner(object):
         source = self.scan_records.get("source", {})
         file_inventory = self.file_inventory
         objects = self.scan_records.get("objects", [])
+        trees = self.scan_records.get("trees", [])
         metadata = self.scan_records.get("metadata", {})
         scan_time = self.scan_records.get("time", [])
         dir_size = self.scan_records.get("size", 0)
@@ -1534,6 +1539,7 @@ class AnsibleScanner(object):
             source=source,
             file_inventory=file_inventory,
             objects=objects,
+            trees=trees,
             metadata=metadata,
             scan_time=scan_time,
             dir_size=dir_size,
@@ -1554,6 +1560,7 @@ class AnsibleScanner(object):
             "time": [],
             "size": 0,
             "objects": [],
+            "trees": [],
             "ignored_files": [],
             "begin": time.time(),
         }
