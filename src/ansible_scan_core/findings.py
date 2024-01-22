@@ -1,6 +1,6 @@
 # -*- mode:python; coding:utf-8 -*-
 
-# Copyright (c) 2022 IBM Corp. All rights reserved.
+# Copyright (c) 2024 IBM Corp. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from copy import deepcopy
 from dataclasses import dataclass, field
 import jsonpickle

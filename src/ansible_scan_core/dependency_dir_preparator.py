@@ -1,6 +1,6 @@
 # -*- mode:python; coding:utf-8 -*-
 
-# Copyright (c) 2022 IBM Corp. All rights reserved.
+# Copyright (c) 2024 IBM Corp. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -203,7 +203,7 @@ class DependencyDirPreparator(object):
             for cdep in col_dependencies:
                 col_name = cdep
                 col_version = ""
-                if type(cdep) is dict:
+                if isinstance(cdep, dict):
                     col_name = cdep.get("name", "")
                     col_version = cdep.get("version", "")
                     if col_name == "":
@@ -307,7 +307,7 @@ class DependencyDirPreparator(object):
                     is_local_dir = rdep.get("is_local_dir", False)
                     rdep = rdep_name
                 name = rdep
-                if type(rdep) is dict:
+                if isinstance(rdep, dict):
                     name = rdep.get("name", "")
                     if name == "":
                         name = rdep.get("src", "")

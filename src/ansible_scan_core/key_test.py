@@ -1,6 +1,6 @@
 # -*- mode:python; coding:utf-8 -*-
 
-# Copyright (c) 2022 IBM Corp. All rights reserved.
+# Copyright (c) 2024 IBM Corp. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import json
-from keyutil import get_obj_info_by_key
+from .keyutil import get_obj_info_by_key
 
 
 if __name__ == "__main__":

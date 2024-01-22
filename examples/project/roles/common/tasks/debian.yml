@@ -1,0 +1,5 @@
+# roles/example/tasks/debian.yml
+- name: Install web server
+  ansible.builtin.apt:
+    name: "apache2"
+    state: present
