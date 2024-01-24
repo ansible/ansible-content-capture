@@ -103,7 +103,6 @@ class VariablePrecedence(object):
         return not self.__lt__(__o)
 
 
-
 class VariableType(object):
     # When resolving variables, sometimes find unknown variables (e.g. undefined variable)
     # so we consider it as one type of variable
@@ -191,6 +190,7 @@ class VariableDict(object):
                 row[type_label] = value
             table.append(row)
         return tabulate(table, headers="keys")
+
 
 class ArgumentsType(object):
     SIMPLE = "simple"
@@ -520,9 +520,9 @@ class VariableContainer:
     filepath: str = ""
     used_vars: {} = field(default_factory=dict)
     # set_vars: field(default_factory=dict)
-    set_scoped_vars: {} = field(default_factory=dict) # available in children
-    set_explicit_scoped_vars: {} = field(default_factory=dict) # available in children
-    set_local_vars: {} = field(default_factory=dict) # available in local
+    set_scoped_vars: {} = field(default_factory=dict)  # available in children
+    set_explicit_scoped_vars: {} = field(default_factory=dict)  # available in children
+    set_local_vars: {} = field(default_factory=dict)  # available in local
 
     def accum(self, vc):
         self.set_explicit_scoped_vars |= vc.set_explicit_scoped_vars
@@ -614,11 +614,10 @@ class VariableContainer:
                 vc_dict[vc.obj_key] = vc
         return vc_dict
 
-
     # return accum vc based on call tree
     @staticmethod
     def from_call_tree(call_tree, vc_dict, obj_key, obj_filepath):
-        parents=[]
+        parents = []
         parents = traverse_and_get_parents(obj_key, call_tree, parents)
         parents.reverse()
         accum_vc = VariableContainer()
@@ -657,7 +656,7 @@ class VariableContainer:
         for i in range(len(tree.items)):
             if i == len(tree.items) - 2:
                 break
-            call_tree.append((tree.items[i].spec, tree.items[i+1].spec))
+            call_tree.append((tree.items[i].spec, tree.items[i + 1].spec))
 
         if not call_tree:
             return {}
@@ -922,7 +921,6 @@ class Task(Object, Resolvable):
         #       - if module option is dict, at least one key is included
         candidate_line_nums = []
         for i, line in enumerate(lines):
-
             # skip lines until `previous_task_line` if provided
             if previous_task_line > 0:
                 if i <= previous_task_line - 1:
@@ -1956,7 +1954,6 @@ class ActionGroupMetadata(object):
         )
 
 
-
 @dataclass
 class InputData:
     index: int = 0
@@ -2020,13 +2017,13 @@ class ScanResult(object):
         metadata: dict,
         scan_time: list,
         dir_size: int,
-        scan_metadata: dict={},
-        dependencies: list=[],
-        ):
+        scan_metadata: dict = {},
+        dependencies: list = [],
+    ):
         proj = cls()
         proj.source = source
         if source:
-            proj.source_id = json.dumps(source, separators=(',', ':'))
+            proj.source_id = json.dumps(source, separators=(",", ":"))
 
         proj.file_inventory = file_inventory
 
@@ -2052,7 +2049,7 @@ class ScanResult(object):
         setattr(self, obj_type, objects_per_type)
         return
 
-    def get_object(self, key: str=""):
+    def get_object(self, key: str = ""):
         if key:
             obj_type = get_obj_type(key) + "s"
             objects_per_type = getattr(self, obj_type, [])
@@ -2061,7 +2058,7 @@ class ScanResult(object):
                     return obj
         return None
 
-    def get_all_call_sequences(self, follow_include: bool=True):
+    def get_all_call_sequences(self, follow_include: bool = True):
         found_taskfile_keys = set()
         all_call_sequences = []
         for p in self.playbooks:
@@ -2085,7 +2082,7 @@ class ScanResult(object):
         return all_call_sequences
 
     # NOTE: currently this returns only 1 sequence found first
-    def get_call_sequence_for_task(self, task: Task, follow_include: bool=True):
+    def get_call_sequence_for_task(self, task: Task, follow_include: bool = True):
         target_key = task.key
         all_call_seqs = self.get_all_call_sequences(follow_include=follow_include)
         found_seq = None
@@ -2096,24 +2093,24 @@ class ScanResult(object):
                 break
         return found_seq
 
-    def get_call_sequence_by_entrypoint(self, entrypoint: Playbook|Role|TaskFile, follow_include: bool=True):
+    def get_call_sequence_by_entrypoint(self, entrypoint: Playbook | Role | TaskFile, follow_include: bool = True):
         call_tree = self.get_call_tree_by_entrypoint(entrypoint=entrypoint, follow_include=follow_include)
         call_seq = self.call_graph2sequence(call_tree)
         return call_seq
 
-    def get_call_tree_by_entrypoint(self, entrypoint: Playbook|Role|TaskFile, follow_include: bool=True):
+    def get_call_tree_by_entrypoint(self, entrypoint: Playbook | Role | TaskFile, follow_include: bool = True):
         return self._get_call_graph(obj=entrypoint, follow_include=follow_include)
 
-    def call_graph2sequence(self, call_graph: list=[]):
+    def call_graph2sequence(self, call_graph: list = []):
         if not call_graph:
             return []
         call_seq = [call_graph[0][0]]
-        for (_, c_obj) in call_graph:
+        for _, c_obj in call_graph:
             call_seq.append(c_obj)
         return call_seq
 
     # get call graph which starts from the specified object (e.g. playbook -> play -> task)
-    def _get_call_graph(self, obj: Object=None, key: str="", follow_include: bool=True):
+    def _get_call_graph(self, obj: Object = None, key: str = "", follow_include: bool = True):
         if not obj and not key:
             raise ValueError("either `obj` or `key` must be non-empty value")
 
@@ -2125,26 +2122,23 @@ class ScanResult(object):
         history = []
         return self._recursive_get_call_graph(obj=obj, history=history, follow_include=follow_include)
 
-
-    def _get_children_keys_for_graph(self, obj, follow_include: bool=True):
+    def _get_children_keys_for_graph(self, obj, follow_include: bool = True):
         if isinstance(obj, Playbook):
             return obj.plays
         elif isinstance(obj, Role):
             # TODO: support role invokation for non main.yml
             target_filenames = ["main.yml", "main.yaml"]
+
             def get_filename(tf_key):
                 return tf_key.split(key_delimiter)[-1].split("/")[-1]
-            taskfile_key = [
-                tf_key
-                for tf_key in obj.taskfiles if get_filename(tf_key) in target_filenames
-            ]
+
+            taskfile_key = [tf_key for tf_key in obj.taskfiles if get_filename(tf_key) in target_filenames]
             return taskfile_key
         elif isinstance(obj, Play):
             roles = []
             if follow_include:
                 if obj.roles:
                     for rip in obj.roles:
-
                         role_key = rip.role_info.get("key", None)
                         if role_key:
                             roles.append(role_key)
@@ -2160,7 +2154,7 @@ class ScanResult(object):
 
         return []
 
-    def _recursive_get_call_graph(self, obj, history=None, follow_include: bool=True):
+    def _recursive_get_call_graph(self, obj, history=None, follow_include: bool = True):
         if not history:
             history = []
 
@@ -2228,7 +2222,6 @@ class ScanResult(object):
             tasks.extend(p_tasks)
         return tasks
 
-
     # find all tasks defined in the specified play from SageProject
     def get_tasks_in_play(self, play: Play):
         task_keys = play.pre_tasks + play.tasks + play.post_tasks
@@ -2239,7 +2232,6 @@ class ScanResult(object):
                 continue
             tasks.append(task)
         return tasks
-
 
     # find all tasks defined in the specified taskfile from SageProject
     def get_tasks_in_taskfile(self, taskfile: TaskFile):
@@ -2252,7 +2244,6 @@ class ScanResult(object):
             tasks.append(task)
         return tasks
 
-
     # find all tasks defined in the specified playbook or taskfile from SageProject
     def get_tasks_in_file(self, target: Playbook | TaskFile = None):
         tasks = []
@@ -2262,7 +2253,6 @@ class ScanResult(object):
             tasks = self.get_tasks_in_taskfile(target)
         return tasks
 
-
     # find all tasks defined in the specified playbook or taskfile from SageProject
     # if `root` is an object key, get the object from SageProject first
     def get_tasks(self, root: str | Object):
@@ -2270,7 +2260,6 @@ class ScanResult(object):
         if isinstance(root, str):
             root_obj = self.get_object(key=root)
         return self.get_tasks_in_file(target=root_obj)
-
 
     # find all plays defined in the specified playbook from SageProject
     def get_plays(self, playbook: Playbook):
@@ -2285,7 +2274,6 @@ class ScanResult(object):
             plays.append(play)
         return plays
 
-
     # find all taskfiles in the speciifed role from SageProject
     def get_taskfiles_in_role(self, role: Role):
         taskfile_keys = role.taskfiles
@@ -2299,7 +2287,6 @@ class ScanResult(object):
             taskfiles.append(taskfile)
         return taskfiles
 
-
     # find main.yml or main.yaml in the specified role from SageProject
     def get_main_taskfile_for_role(self, role: Role):
         taskfiles = self.get_taskfiles_in_role(role)
@@ -2308,7 +2295,6 @@ class ScanResult(object):
             if filename in ["main.yml", "main.yaml"]:
                 return tf
         return None
-
 
     # find a parent role for the specified taskfile if it exists
     def find_parent_role(self, taskfile: TaskFile):

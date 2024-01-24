@@ -303,7 +303,6 @@ def load_inventory(path, basedir=""):
 
 
 def load_inventories(path, basedir=""):
-
     if not os.path.exists(path):
         return []
     inventories = []
@@ -396,7 +395,7 @@ def load_files(path, basedir="", yaml_label_list=None, role_name="", collection_
         return []
 
     files = []
-    for (fpath, label, role_info) in yaml_label_list:
+    for fpath, label, role_info in yaml_label_list:
         if not fpath:
             continue
         if not label:
@@ -870,7 +869,7 @@ def load_playbooks(
 
     # add files if yaml_label_list is given
     if yaml_label_list:
-        for (fpath, label, role_info) in yaml_label_list:
+        for fpath, label, role_info in yaml_label_list:
             if label == "playbook":
                 # if it is a playbook in role, it should be scanned by load_role
                 if role_info:
@@ -1170,7 +1169,6 @@ def load_roles(
     yaml_label_list=None,
     load_children=True,
 ):
-
     if path == "":
         return []
     roles_patterns = ["roles", "playbooks/roles", "playbook/roles"]
@@ -1210,7 +1208,7 @@ def load_roles(
 
     # add role dirs if yaml_label_list is given
     if yaml_label_list:
-        for (fpath, label, role_info) in yaml_label_list:
+        for fpath, label, role_info in yaml_label_list:
             if role_info and isinstance(role_info, dict):
                 role_path = role_info.get("path", "")
                 _role_path = role_path
@@ -1466,7 +1464,6 @@ def load_task(
     previous_task_line=-1,
     basedir="",
 ):
-
     taskObj = Task()
     fullpath = ""
     if yaml_lines:
@@ -1723,7 +1720,7 @@ def load_taskfiles(path, basedir="", yaml_label_list=None, load_children=True):
 
     # add files if yaml_label_list is given
     if yaml_label_list:
-        for (fpath, label, role_info) in yaml_label_list:
+        for fpath, label, role_info in yaml_label_list:
             if label == "taskfile":
                 # if it is a taskfile in role, it should be scanned by load_role
                 if role_info:
@@ -1759,7 +1756,6 @@ def load_collection(
     include_test_contents=False,
     load_children=True,
 ):
-
     colObj = Collection()
     fullpath = ""
     if os.path.exists(collection_dir):
