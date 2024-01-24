@@ -38,7 +38,6 @@ def is_loop_var(value, task):
 
 
 def set_variable_details(task: TaskCall):
-
     undefined_variables = []
     unknown_name_vars = []
     unnecessary_loop = []

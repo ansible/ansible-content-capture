@@ -399,7 +399,6 @@ class ScanData(object):
         return target_path, dep_dirs
 
     def create_load_file(self, target_type, target_name, target_path):
-
         loader_version = get_scanner_version()
 
         if not os.path.exists(target_path) and not self.playbook_yaml and not self.taskfile_yaml:
@@ -506,7 +505,6 @@ class ScanData(object):
         return target_path
 
     def load_definitions_root(self, target_path=""):
-
         output_dir = self._path_mappings["root_definitions"]
         root_load = self._set_load_root(target_path=target_path)
 
@@ -594,7 +592,7 @@ class ScanData(object):
             open(tasks_in_t_path, "w").write("\n".join(tasks_in_t_lines))
         return
 
-    def set_details(self, kb_client: KBClient=None):
+    def set_details(self, kb_client: KBClient = None):
         target_name = self.name
         if self.collection_name:
             target_name = self.collection_name
@@ -1218,7 +1216,9 @@ class AnsibleScanner(object):
                     if not hasattr(call_obj, "annotations"):
                         continue
                     orig_annotations = call_obj.annotations
-                    annotations = {anno.key: anno.value for anno in orig_annotations if isinstance(anno.key, str) and anno.key not in skip_annotation_keys}
+                    annotations = {
+                        anno.key: anno.value for anno in orig_annotations if isinstance(anno.key, str) and anno.key not in skip_annotation_keys
+                    }
                     spec_key = call_obj.spec.key
                     if annotations:
                         annotation_dict[spec_key] = annotations
@@ -1235,7 +1235,6 @@ class AnsibleScanner(object):
             for obj_type in objects:
                 objects_per_type = objects[obj_type]
                 for obj in objects_per_type:
-
                     # filter files to avoid too many files in objects
                     if obj_type == "files":
                         if is_skip_file_obj(obj, tasks, plays):
@@ -1276,7 +1275,7 @@ class AnsibleScanner(object):
 
         return
 
-    def run(self, target_dir: str="", raw_yaml: str="", **kwargs):
+    def run(self, target_dir: str = "", raw_yaml: str = "", **kwargs):
         self._init_scan_records()
 
         kwargs["target_dir"] = target_dir
@@ -1344,7 +1343,7 @@ class AnsibleScanner(object):
                 type=_type,
                 name=_name,
                 path=filepath,
-                metadata={"original_type": original_type, "base_dir": base_dir}
+                metadata={"original_type": original_type, "base_dir": base_dir},
             )
             for i, (_type, _name, filepath, base_dir, original_type) in enumerate(missing_files)
         ]
@@ -1363,7 +1362,6 @@ class AnsibleScanner(object):
 
         self._clear_scan_records()
         return result
-
 
     def create_input_list(self, target_dir="", raw_yaml="", label="", filepath=""):
         # single yaml scan
@@ -1384,7 +1382,6 @@ class AnsibleScanner(object):
             input_list = [input_data]
 
         elif target_dir:
-
             # otherwise, create input_list for multi-stage scan
             dir_size = get_dir_size(target_dir)
             path_list = get_yml_list(target_dir)
@@ -1409,32 +1406,36 @@ class AnsibleScanner(object):
             num = len(project_file_list) + len(role_file_list) + len(independent_file_list)
             for project_name in project_file_list:
                 project_path = project_file_list[project_name].get("path")
-                input_list.append(InputData(
-                    index=i,
-                    total_num=num,
-                    type="project",
-                    name=project_name,
-                    path=project_path,
-                    metadata={
-                        "base_dir": project_path,
-                    }
-                ))
+                input_list.append(
+                    InputData(
+                        index=i,
+                        total_num=num,
+                        type="project",
+                        name=project_name,
+                        path=project_path,
+                        metadata={
+                            "base_dir": project_path,
+                        },
+                    )
+                )
                 i += 1
 
             for role_name in role_file_list:
                 _type = "role"
                 _name = role_name
                 role_path = role_file_list[role_name].get("path")
-                input_list.append(InputData(
-                    index=i,
-                    total_num=num,
-                    type="role",
-                    name=role_name,
-                    path=role_path,
-                    metadata={
-                        "base_dir": role_path,
-                    }
-                ))
+                input_list.append(
+                    InputData(
+                        index=i,
+                        total_num=num,
+                        type="role",
+                        name=role_name,
+                        path=role_path,
+                        metadata={
+                            "base_dir": role_path,
+                        },
+                    )
+                )
                 i += 1
 
             for file in independent_file_list:
@@ -1442,16 +1443,18 @@ class AnsibleScanner(object):
                 filepath = _name
                 _type = file.get("label")
                 if _type in ["playbook", "taskfile"]:
-                    input_list.append(InputData(
-                    index=i,
-                    total_num=num,
-                    type=_type,
-                    name=_name,
-                    path=filepath,
-                    metadata={
-                        "base_dir": target_dir,
-                    }
-                ))
+                    input_list.append(
+                        InputData(
+                            index=i,
+                            total_num=num,
+                            type=_type,
+                            name=_name,
+                            path=filepath,
+                            metadata={
+                                "base_dir": target_dir,
+                            },
+                        )
+                    )
                 i += 1
         else:
             raise ValueError("Either `target_dir` or `raw_yaml` are required to create input_list")
@@ -1664,7 +1667,6 @@ def resolve(trees, additional):
 
 
 def get_all_files_from_scandata(scandata, scan_root_dir):
-    
     task_specs = scandata.root_definitions.get("definitions", {}).get("tasks", [])
     all_files = []
     for task_spec in task_specs:

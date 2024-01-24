@@ -43,9 +43,7 @@ def is_debug(module_fqcn):
 
 
 def set_argument_value_details(task: TaskCall):
-
     if task.spec.executable_type == ExecutableType.MODULE_TYPE and task.module and task.module.arguments:
-
         wrong_values = []
         undefined_values = []
         unknown_type_values = []

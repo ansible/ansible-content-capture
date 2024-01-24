@@ -92,7 +92,6 @@ def main():
 
 
 def ptree(start, tree, indent_width=2):
-
     def _ptree(start, parent, tree, grandpa=None, indent=""):
         if parent != start:
             if grandpa is None:  # Ask grandpa kids!

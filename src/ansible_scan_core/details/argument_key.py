@@ -30,10 +30,8 @@ def is_meta(module_fqcn):
     return module_fqcn == "ansible.builtin.meta"
 
 
-def set_argument_key_details(task: TaskCall, kb_client: KBClient=None):
-
+def set_argument_key_details(task: TaskCall, kb_client: KBClient = None):
     if task.spec.executable_type == ExecutableType.MODULE_TYPE and task.module and task.module.arguments:
-
         mo = task.spec.module_options
         module_fqcn = task.get_annotation(key="module.correct_fqcn")
         module_short = ""

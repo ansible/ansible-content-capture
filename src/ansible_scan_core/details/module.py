@@ -31,7 +31,6 @@ def set_module_details(task: TaskCall):
 
     # normal task
     if task.spec.executable_type == ExecutableType.MODULE_TYPE:
-
         resolved_fqcn = task.spec.resolved_name
         suggested_fqcns = [cand[0] for cand in task.spec.possible_candidates]
         suggested_dependency = [cand[1] for cand in task.spec.possible_candidates]

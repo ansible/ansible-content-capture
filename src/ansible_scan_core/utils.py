@@ -40,7 +40,7 @@ import ansible_scan_core.logger as logger
 variable_block_re = re.compile(r"{{[^}]+}}")
 
 magic_vars = []
-vars_file = os.getenv("VARS_FILE", os.path.join(os.path.dirname(__file__),"ansible_variables.txt"))
+vars_file = os.getenv("VARS_FILE", os.path.join(os.path.dirname(__file__), "ansible_variables.txt"))
 with open(vars_file, "r") as f:
     magic_vars = f.read().splitlines()
 
@@ -575,34 +575,38 @@ def get_yml_list(root_dir: str):
                 role_info["is_external_dependency"] = True if "." in role_info["name"] else False
             in_role = True if role_info else False
             in_project = True if project_info else False
-            all_files.append({
-                "filepath": yml_path,
-                "path_from_root": yml_path.replace(root_dir, "").lstrip("/"),
-                "label": label,
-                "ext": ext,
-                "is_yml": True,
-                "role_info": role_info,
-                "project_info": project_info,
-                "in_role": in_role,
-                "in_project": in_project,
-                "name_count": name_count,
-                "error": error,
-            })
+            all_files.append(
+                {
+                    "filepath": yml_path,
+                    "path_from_root": yml_path.replace(root_dir, "").lstrip("/"),
+                    "label": label,
+                    "ext": ext,
+                    "is_yml": True,
+                    "role_info": role_info,
+                    "project_info": project_info,
+                    "in_role": in_role,
+                    "in_project": in_project,
+                    "name_count": name_count,
+                    "error": error,
+                }
+            )
         else:
             # non YAML file
-            all_files.append({
-                "filepath": filepath,
-                "path_from_root": filepath.replace(root_dir, "").lstrip("/"),
-                "label": "others",
-                "ext": ext,
-                "is_yml": False,
-                "role_info": None,
-                "project_info": None,
-                "in_role": False,
-                "in_project": False,
-                "name_count": -1,
-                "error": None,
-            })
+            all_files.append(
+                {
+                    "filepath": filepath,
+                    "path_from_root": filepath.replace(root_dir, "").lstrip("/"),
+                    "label": "others",
+                    "ext": ext,
+                    "is_yml": False,
+                    "role_info": None,
+                    "project_info": None,
+                    "in_role": False,
+                    "in_project": False,
+                    "name_count": -1,
+                    "error": None,
+                }
+            )
     return all_files
 
 
@@ -658,19 +662,21 @@ def create_scan_list(file_inventory):
                 p_path = project_info.get("path", "")
                 if p_name not in project_file_list:
                     project_file_list[p_name] = {"path": p_path, "files": []}
-                project_file_list[p_name]["files"].append({
-                    "filepath": filepath,
-                    "path_from_root": path_from_root,
-                    "ext": ext,
-                    "is_yml": is_yml,
-                    "label": label,
-                    "project_info": project_info,
-                    "role_info": role_info,
-                    "in_project": in_project,
-                    "in_role": in_role,
-                    "name_count": name_count,
-                    "error": error,
-                })
+                project_file_list[p_name]["files"].append(
+                    {
+                        "filepath": filepath,
+                        "path_from_root": path_from_root,
+                        "ext": ext,
+                        "is_yml": is_yml,
+                        "label": label,
+                        "project_info": project_info,
+                        "role_info": role_info,
+                        "in_project": in_project,
+                        "in_role": in_role,
+                        "name_count": name_count,
+                        "error": error,
+                    }
+                )
             elif role_info:
                 r_name = role_info.get("name", "")
                 r_path = role_info.get("path", "")
@@ -678,21 +684,40 @@ def create_scan_list(file_inventory):
                     continue
                 if r_name not in role_file_list:
                     role_file_list[r_name] = {"path": r_path, "files": []}
-                role_file_list[r_name]["files"].append({
-                    "filepath": filepath,
-                    "path_from_root": path_from_root,
-                    "ext": ext,
-                    "is_yml": is_yml,
-                    "label": label,
-                    "project_info": project_info,
-                    "role_info": role_info,
-                    "in_project": in_project,
-                    "in_role": in_role,
-                    "name_count": name_count,
-                    "error": error,
-                })
+                role_file_list[r_name]["files"].append(
+                    {
+                        "filepath": filepath,
+                        "path_from_root": path_from_root,
+                        "ext": ext,
+                        "is_yml": is_yml,
+                        "label": label,
+                        "project_info": project_info,
+                        "role_info": role_info,
+                        "in_project": in_project,
+                        "in_role": in_role,
+                        "name_count": name_count,
+                        "error": error,
+                    }
+                )
             else:
-                independent_file_list.append({
+                independent_file_list.append(
+                    {
+                        "filepath": filepath,
+                        "path_from_root": path_from_root,
+                        "ext": ext,
+                        "is_yml": is_yml,
+                        "label": label,
+                        "project_info": project_info,
+                        "role_info": role_info,
+                        "in_project": in_project,
+                        "in_role": in_role,
+                        "name_count": name_count,
+                        "error": error,
+                    }
+                )
+        else:
+            non_yaml_file_list.append(
+                {
                     "filepath": filepath,
                     "path_from_root": path_from_root,
                     "ext": ext,
@@ -704,21 +729,8 @@ def create_scan_list(file_inventory):
                     "in_role": in_role,
                     "name_count": name_count,
                     "error": error,
-                })
-        else:
-            non_yaml_file_list.append({
-                "filepath": filepath,
-                "path_from_root": path_from_root,
-                "ext": ext,
-                "is_yml": is_yml,
-                "label": label,
-                "project_info": project_info,
-                "role_info": role_info,
-                "in_project": in_project,
-                "in_role": in_role,
-                "name_count": name_count,
-                "error": error,
-            })
+                }
+            )
     return project_file_list, role_file_list, independent_file_list, non_yaml_file_list
 
 
@@ -796,10 +808,10 @@ def is_skip_file_obj(obj, tasks=[], plays=[]):
             if basename in fpath:
                 return False
 
-    return  True
+    return True
 
 
-def flatten_dict_list(d, parent_key='', sep='.'):
+def flatten_dict_list(d, parent_key="", sep="."):
     items = {}
     if d is None:
         return items
@@ -827,7 +839,7 @@ def flatten_dict_list(d, parent_key='', sep='.'):
     return items
 
 
-def flatten_dict(d, parent_key='', sep='.'):
+def flatten_dict(d, parent_key="", sep="."):
     items = {}
     if isinstance(d, str):
         items["value"] = d
@@ -849,7 +861,7 @@ def flatten_dict(d, parent_key='', sep='.'):
 
 
 # return var names
-def extract_var_parts(options: dict|str):
+def extract_var_parts(options: dict | str):
     vars_in_option = {}
     if isinstance(options, str):
         if "{{" in options:
@@ -916,7 +928,7 @@ def extract_variable_names(txt):
                     if match:
                         matched_str = match.group(1)
                         var_name = matched_str.split("[")[0]
-                    list_pattern = r'(\w+)\[\-?\d+\]'
+                    list_pattern = r"(\w+)\[\-?\d+\]"
                     match = re.search(list_pattern, var_name)
                     if match:
                         matched_str = match.group(1)
@@ -936,7 +948,6 @@ def extract_variable_names(txt):
             tmp_b["default"] = default_var_name
         blocks.append(tmp_b)
     return blocks
-
 
 
 # return used vars in when option
@@ -977,12 +988,12 @@ def extract_when_option_var_name(option_parts, is_failed_when=False):
     option_parts = _split_values(option_parts)
     used_vars = {}
     ignore_words = ["defined", "undefined", "is", "not", "and", "or", "|", "in", "none", "+", "vars"]
-    boolean_vars = ["True", "true", "t", "yes", 'y', 'on', "False", "false", 'f', 'no', 'n', 'off']
+    boolean_vars = ["True", "true", "t", "yes", "y", "on", "False", "false", "f", "no", "n", "off"]
     data_type_words = ["bool", "float", "int", "length", "string"]
     for p in option_parts:
         if "match(" in p or "default(" in p:
             continue
-        p = p.replace(")","").replace("(","").replace("{", "").replace("}", "")
+        p = p.replace(")", "").replace("(", "").replace("{", "").replace("}", "")
         if not p:
             continue
         if "=" in p or "<" in p or ">" in p:
@@ -1001,10 +1012,10 @@ def extract_when_option_var_name(option_parts, is_failed_when=False):
             continue
         if "[" in p:
             # extract var part from dict format like "hostvars[inventory_hostname]"
-            all_parts = re.split('[\[]', f"{p}")
+            all_parts = re.split(r"[\[]", f"{p}")
             if "[" not in all_parts[0]:
                 p = all_parts[0]
-        p = p.replace("\"", "")
+        p = p.replace('"', "")
         if is_num(p):
             continue
         if check_if_magic_vars(p):
@@ -1039,9 +1050,9 @@ def _split_values(all_values):
             if quoted_str != "" and quoted_str != " ":
                 val = val.replace(quoted_str, " ")
         for quoted_str in single_quoted_strings:
-            if quoted_str != '' and quoted_str != ' ':
+            if quoted_str != "" and quoted_str != " ":
                 val = val.replace(quoted_str, " ")
-        all_parts.extend(re.split('[ |]', f"{val}"))
+        all_parts.extend(re.split("[ |]", f"{val}"))
     return all_parts
 
 
@@ -1059,10 +1070,10 @@ def traverse_and_get_parents(node_key, call_tree, parent_nodes):
     sibling = []
     for parent, child in call_tree:
         # sibling
-        key_parts = child.key.rsplit('#', 1)
+        key_parts = child.key.rsplit("#", 1)
         p1 = key_parts[0]
         p2 = key_parts[-1]
-        n_key_parts = node_key.rsplit('#', 1)
+        n_key_parts = node_key.rsplit("#", 1)
         np1 = n_key_parts[0]
         np2 = n_key_parts[-1]
         if "task:" in p2 and "task:" in np2:
