@@ -1,3 +1,5 @@
+> **Note:** This repository is in prototype phase and under active development with subject to breaking changes.
+
 # Ansible Scan Core
 
 Ansible Scan Core is a scanning framework for Ansible contents and it generates graph/intermediate/high-level representation of Ansible data.
