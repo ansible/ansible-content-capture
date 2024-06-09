@@ -54,4 +54,4 @@ max-line-length = 150
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
-write_to = "src/ansible_scan_core/_version.py"
+write_to = "src/ansible_content_capture/_version.py"

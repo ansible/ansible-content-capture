@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import os
-from ansible_scan_core.scanner import AnsibleScanner
+from ansible_content_capture.scanner import AnsibleScanner
 
 
 scanner = AnsibleScanner()

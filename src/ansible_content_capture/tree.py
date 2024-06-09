@@ -19,7 +19,7 @@ import re
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 from .keyutil import detect_type, key_delimiter, object_delimiter
 from .models import (
     ObjectList,

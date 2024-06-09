@@ -18,7 +18,7 @@ import os
 import sys
 import json
 
-from ansible_scan_core.scanner import AnsibleScanner
+from ansible_content_capture.scanner import AnsibleScanner
 
 
 _single_file_scan_path = "__in_memory__"

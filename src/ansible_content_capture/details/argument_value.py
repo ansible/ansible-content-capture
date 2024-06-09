@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ansible_scan_core.models import (
+from ansible_content_capture.models import (
     TaskCall,
     ArgumentsType,
     ExecutableType,

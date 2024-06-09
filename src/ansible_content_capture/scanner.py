@@ -50,7 +50,7 @@ from .details.module import set_module_details
 from .details.variable import set_variable_details
 from .findings import Findings
 from .knowledge_base import KBClient
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 from .utils import (
     is_url,
     is_local_path,

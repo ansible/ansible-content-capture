@@ -16,7 +16,7 @@
 
 import os
 import copy
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 from .models import (
     Collection,
     Load,

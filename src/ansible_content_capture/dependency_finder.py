@@ -20,7 +20,7 @@ import json
 import subprocess
 from pathlib import Path
 
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 from .safe_glob import safe_glob
 
 from .models import (

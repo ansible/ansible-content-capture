@@ -28,7 +28,7 @@ try:
 except Exception:
     # otherwise, use Python based loader
     from yaml import SafeLoader as Loader
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 from .safe_glob import safe_glob
 from .awx_utils import could_be_playbook, search_playbooks
 
