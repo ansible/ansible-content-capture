@@ -19,7 +19,7 @@ Today, the following projects utilize Ansible Scan Core for the scanning backend
 - [Sage](https://github.com/IBM/sage) - A framework to process Ansible contents for the scanning results
 
 
-![overview](docs/images/ansible-scan-core-overview.png)
+![overview](docs/images/ansible-content-capture-overview.png)
 
 
 ## Object models
