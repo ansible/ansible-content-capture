@@ -22,6 +22,7 @@ import requests
 import hashlib
 import yaml
 import json
+import codecs
 from filelock import FileLock
 from copy import deepcopy
 from tabulate import tabulate
@@ -43,6 +44,11 @@ magic_vars = []
 vars_file = os.getenv("VARS_FILE", os.path.join(os.path.dirname(__file__), "ansible_variables.txt"))
 with open(vars_file, "r") as f:
     magic_vars = f.read().splitlines()
+
+
+bool_values_true = frozenset(("y", "yes", "on", "1", "true", "t", 1, 1.0, True))
+bool_values_false = frozenset(("n", "no", "off", "0", "false", "f", 0, 0.0, False))
+bool_values = bool_values_true.union(bool_values_false)
 
 
 def lock_file(fpath, timeout=10):
@@ -1090,3 +1096,35 @@ def traverse_and_get_parents(node_key, call_tree, parent_nodes):
             break
     # parent_nodes.reverse()
     return parent_nodes
+
+
+def parse_bool(value: any):
+    value_str = None
+    use_value_str = False
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, str):
+        value_str = value
+        use_value_str = True
+    elif isinstance(value, bytes):
+        surrogateescape_enabled = False
+        try:
+            codecs.lookup_error("surrogateescape")
+            surrogateescape_enabled = True
+        except Exception:
+            pass
+        errors = "surrogateescape" if surrogateescape_enabled else "strict"
+        value_str = value.decode("utf-8", errors)
+        use_value_str = True
+
+    if use_value_str and isinstance(value_str, str):
+        value_str = value_str.lower().strip()
+
+    target_value = value_str if use_value_str else value
+
+    if target_value in bool_values_true:
+        return True
+    elif target_value in bool_values_false:
+        return False
+    else:
+        raise TypeError(f'failed to parse the value "{value}" as a boolean.')
