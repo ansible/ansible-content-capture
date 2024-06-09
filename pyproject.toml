@@ -6,7 +6,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ansible-scan-core"
+name = "ansible-content-capture"
 description = "My package description"
 readme = "README.rst"
 requires-python = ">=3.7"

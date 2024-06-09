@@ -51,7 +51,7 @@ def get_scanner_version():
     version = ""
     # try to get version from the installed executable
     try:
-        version = pkg_resources.require("ansible-scan-core")[0].version
+        version = pkg_resources.require("ansible-content-capture")[0].version
     except Exception:
         pass
     if version != "":
