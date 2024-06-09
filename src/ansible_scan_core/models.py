@@ -23,9 +23,9 @@ from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 from copy import deepcopy
 import json
 import jsonpickle
-import Levenshtein
+from rapidfuzz.distance import Levenshtein
 import ansible_scan_core.yaml as ayaml
-from ansible.module_utils.parsing.convert_bool import boolean
+from ansible_scan_core.utils import parse_bool
 from .keyutil import (
     set_collection_key,
     set_module_key,
@@ -518,11 +518,11 @@ class RunTargetList(object):
 class VariableContainer:
     obj_key: str = ""
     filepath: str = ""
-    used_vars: {} = field(default_factory=dict)
+    used_vars: dict = field(default_factory=dict)
     # set_vars: field(default_factory=dict)
-    set_scoped_vars: {} = field(default_factory=dict)  # available in children
-    set_explicit_scoped_vars: {} = field(default_factory=dict)  # available in children
-    set_local_vars: {} = field(default_factory=dict)  # available in local
+    set_scoped_vars: dict = field(default_factory=dict)  # available in children
+    set_explicit_scoped_vars: dict = field(default_factory=dict)  # available in children
+    set_local_vars: dict = field(default_factory=dict)  # available in local
 
     def accum(self, vc):
         self.set_explicit_scoped_vars |= vc.set_explicit_scoped_vars
@@ -857,7 +857,7 @@ class BecomeInfo(object):
             become = options.get("become", "")
             enabled = False
             try:
-                enabled = boolean(become)
+                enabled = parse_bool(become)
             except Exception:
                 pass
             user = options.get("become_user", "")
