@@ -15,8 +15,8 @@
 # limitations under the License.
 
 from typing import List
-from ansible_scan_core.keyutil import detect_type
-from ansible_scan_core.models import (
+from ansible_content_capture.keyutil import detect_type
+from ansible_content_capture.models import (
     ObjectList,
     Repository,
     Playbook,
@@ -27,7 +27,7 @@ from ansible_scan_core.models import (
     Variable,
     VariableType,
 )
-from ansible_scan_core.context import Context, resolve_module_options
+from ansible_content_capture.context import Context, resolve_module_options
 
 
 def resolve_variables(tree: ObjectList, additional: ObjectList) -> List[TaskCall]:

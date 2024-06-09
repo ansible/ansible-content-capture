@@ -49,7 +49,7 @@ $ pip install -e .
 ### Getting started
 
 ```python
-from ansbile_scan_core.scanner import AnsibleScanner
+from ansible_content_capture.scanner import AnsibleScanner
 
 scanner = AnsibleScanner()
 scanner.run(target_dir="<PATH/TO/PROJECT>")

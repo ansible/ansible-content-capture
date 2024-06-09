@@ -24,8 +24,8 @@ from copy import deepcopy
 import json
 import jsonpickle
 from rapidfuzz.distance import Levenshtein
-import ansible_scan_core.yaml as ayaml
-from ansible_scan_core.utils import parse_bool
+import ansible_content_capture.yaml as ayaml
+from ansible_content_capture.utils import parse_bool
 from .keyutil import (
     set_collection_key,
     set_module_key,

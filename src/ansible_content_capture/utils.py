@@ -29,13 +29,13 @@ from tabulate import tabulate
 from inspect import isclass
 from importlib.util import spec_from_file_location, module_from_spec
 
-from ansible_scan_core.finder import (
+from ansible_content_capture.finder import (
     find_all_files,
     label_yml_file,
     get_role_info_from_path,
     get_project_info_for_file,
 )
-import ansible_scan_core.logger as logger
+import ansible_content_capture.logger as logger
 
 
 variable_block_re = re.compile(r"{{[^}]+}}")

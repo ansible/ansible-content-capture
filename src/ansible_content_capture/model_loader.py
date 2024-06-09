@@ -28,8 +28,8 @@ except Exception:
     # otherwise, use Python based loader
     from yaml import SafeLoader as Loader
 
-import ansible_scan_core.logger as logger
-from ansible_scan_core.utils import parse_bool
+import ansible_content_capture.logger as logger
+from ansible_content_capture.utils import parse_bool
 from .safe_glob import safe_glob
 from .models import (
     ExecutableType,

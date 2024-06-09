@@ -69,6 +69,6 @@ class Findings:
             with open(fpath, "r") as file:
                 json_str = file.read()
         # TODO: determine how to load ARI RAM as AnsibleScan KB
-        json_str = json_str.replace("ansible_risk_insight", "ansible_scan_core")
+        json_str = json_str.replace("ansible_risk_insight", "ansible_content_capture")
         findings = jsonpickle.decode(json_str)
         return findings

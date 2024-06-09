@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ansible_scan_core.models import (
+from ansible_content_capture.models import (
     TaskCall,
     ExecutableType,
     ActionGroupMetadata,
 )
-from ansible_scan_core.knowledge_base import KBClient
+from ansible_content_capture.knowledge_base import KBClient
 
 
 def is_set_fact(module_fqcn):
