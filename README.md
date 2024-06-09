@@ -1,8 +1,8 @@
 > **Note:** This repository is in prototype phase and under active development with subject to breaking changes.
 
-# Ansible Scan Core
+# Ansible Content Capture
 
-Ansible Scan Core is a scanning framework for Ansible contents and it generates graph/intermediate/high-level representation of Ansible data.
+Ansible Content Capture is a scanning framework for Ansible contents and it generates graph/intermediate/high-level representation of Ansible data.
 
 It supports scanning for
 - Playbook YAML
@@ -13,7 +13,7 @@ It supports scanning for
 
 and generates Python objects for each of the scanned contents. These objects are JSON serializable so that other projects/users can dump/load/process them depending on their requirements.
 
-Today, the following projects utilize Ansible Scan Core for the scanning backend.
+Today, the following projects utilize Ansible Content Capture for the scanning backend.
 
 - [Ansible Risk Insight](https://github.com/ansible/ansible-risk-insight) - A risk evaluation tool for Ansible contents
 - [Sage](https://github.com/IBM/sage) - A framework to process Ansible contents for the scanning results
@@ -24,7 +24,7 @@ Today, the following projects utilize Ansible Scan Core for the scanning backend
 
 ## Object models
 
-Ansible Scan Core scans Ansible contents and generates representation objects and abstract syntax tree (AST) which consists of Ansible-specific nodes like
+Ansible Content Capture scans Ansible contents and generates representation objects and abstract syntax tree (AST) which consists of Ansible-specific nodes like
 - collections (all external dependencies)
 - modules (name, fqcn, spec)
 - playbooks (name, comment, filename)
